@@ -1,0 +1,5 @@
+numpy>=1.21
+pillow>=9.0
+matplotlib>=3.5
+moderngl>=5.8
+pygame-ce>=2.4
