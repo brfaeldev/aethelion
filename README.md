@@ -21,13 +21,14 @@ pip install -r requirements.txt
 ## Execução
 
 ```bash
-python main.py                                  # tela única: cena, volumes 3D, HUD e barra de estado
+python -m aethelion                             # tela única: cena, volumes 3D, HUD e barra de estado
+python main.py                                  # atalho equivalente na raiz
+python main.py --fullscreen                     # inicia diretamente em tela cheia (F11 alterna)
 python main.py --experiment                     # conformidade + 8 fases + varreduras + relatório
 python main.py --experiment --deterministic     # execução determinística por quadro (reprodutível)
 python main.py --conformance                    # apenas a suíte de conformidade (24 testes)
 python main.py --sv-sweeps                      # varreduras de resolução, complexidade e P_inf
 python main.py --report                         # gráficos e RELATORIO.md a partir dos CSVs
-python main.py --legacy-sweeps                  # varreduras retrô do estudo anterior (v1)
 pytest                                          # suíte completa de testes unitários e conformidade
 ```
 
@@ -97,12 +98,15 @@ possível alterar qualquer parâmetro: cada alteração vira um evento em
 
 ```text
 aethelion/
-├── main.py                      # Ponto de entrada CLI
+├── main.py                      # Atalho de entrada na raiz
 ├── pyproject.toml               # Metadados do pacote e configuração pytest
 ├── METODOLOGIA.md               # Modelagem matemática e desenho experimental
 ├── docs/                        # Diagnóstico, alinhamento acadêmico e artigos PDF
 ├── tests/                       # Testes automatizados (pytest)
 └── aethelion/
+    ├── __init__.py              # API pública do pacote
+    ├── __main__.py              # Suporte a `python -m aethelion`
+    ├── cli.py                   # Interface de linha de comando (CLI)
     ├── core/                    # Motor gráfico e estágios do pipeline
     │   ├── mathutil.py          # Álgebra 4x4, perspectiva finita e P_inf
     │   ├── precision.py         # Emulação de ponto fixo/flutuante e Z-buffer N bits
@@ -119,7 +123,6 @@ aethelion/
     │   ├── truth.py             # Referência por ray casting e métricas F1
     │   ├── scenario.py          # Roteiro de 8 fases e varreduras paramétricas
     │   └── report.py            # Gráficos e gerador de RELATORIO.md
-    ├── ui/
-    │   └── viewer.py            # Aplicação interativa Pygame
-    └── legacy/                  # Estudo anterior isolado (v1)
+    └── ui/
+        └── viewer.py            # Aplicação interativa Pygame
 ```
