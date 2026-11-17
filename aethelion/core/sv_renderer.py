@@ -130,8 +130,6 @@ class SVRenderer:
         self.shadow_mask = np.zeros((self.settings.height, self.settings.width), bool)
         self.visible_mask = np.zeros_like(self.shadow_mask)
         self._last_vp: np.ndarray = mu.identity()
-        self._last_sil_segments: list[np.ndarray] = []
-        self._last_vol_sides: list[np.ndarray] = []
 
     # ------------------------------------------------------------------ #
     def _alloc(self) -> None:
@@ -450,22 +448,24 @@ class SVRenderer:
         # 2a. Construção de silhuetas e volumes do algoritmo (cronometrada)
         ts = time.perf_counter()
         batches = []
-        occluder_pw = []
+        occluder_cache = []
         for prop in self.scene:
             if not prop.occluder:
                 continue
             pw, _ = self._world(prop)
-            occluder_pw.append((prop, pw))
             if use_inf:
                 sides, front, back = sv.build_volume_homogeneous(
                     pw, prop.solid.indices, prop.solid.dir_edges,
                     prop.solid.edge_face, prop.solid.edge_opp,
                     self.light, length=ext_len, infinite=True, caps=zfail)
+                occluder_cache.append((prop, pw, None))
             else:
                 sides, front, back = sv.build_volume(
                     pw, prop.solid.indices, prop.solid.dir_edges,
                     prop.solid.edge_face, prop.solid.edge_opp,
                     self.light, ext_len, caps=zfail)
+                closed_fin = (sides, front, back) if zfail else None
+                occluder_cache.append((prop, pw, closed_fin))
             if zfail:
                 parts = [x for x in (sides, front, back) if x.shape[0]]
                 if parts:
@@ -475,30 +475,25 @@ class SVRenderer:
                     batches.append(sides)
         st.ms_silhouette = (time.perf_counter() - ts) * 1000.0
 
-        # 2b. Instrumentação observacional (volumes_with_camera + cache de inspeção 3D)
-        # Executada FORA de ms_silhouette e descontada de ms_total.
+        # 2b. Instrumentação observacional (volumes_with_camera)
+        # Reaproveita os volumes finitos já construídos quando disponíveis e
+        # executa FORA de ms_silhouette (descontado de ms_total).
         t_obs0 = time.perf_counter()
-        self._last_sil_segments.clear()
-        self._last_vol_sides.clear()
         vis_len = ext_len if ext_len > 0 else 40.0
-        for prop, pw in occluder_pw:
-            sides3, front3, back3 = sv.build_volume(
-                pw, prop.solid.indices, prop.solid.dir_edges,
-                prop.solid.edge_face, prop.solid.edge_opp,
-                self.light, vis_len, caps=True)
+        for prop, pw, closed_fin in occluder_cache:
+            if closed_fin is not None:
+                sides3, front3, back3 = closed_fin
+            else:
+                sides3, front3, back3 = sv.build_volume(
+                    pw, prop.solid.indices, prop.solid.dir_edges,
+                    prop.solid.edge_face, prop.solid.edge_opp,
+                    self.light, vis_len, caps=True)
             if sides3.shape[0] == 0 and front3.shape[0] == 0:
                 continue
             closed3 = np.concatenate([x for x in (sides3, front3, back3)
                                       if x.shape[0]], axis=0)
             if sv.point_in_volume(self.camera_eye, closed3):
                 st.volumes_with_camera += 1
-            if sides3.shape[0]:
-                self._last_vol_sides.append(sides3)
-            seg = sv.extract_silhouette_segments(
-                pw, prop.solid.indices, prop.solid.dir_edges,
-                prop.solid.edge_face, prop.solid.edge_opp, self.light)
-            if seg.shape[0]:
-                self._last_sil_segments.append(seg)
         obs_overhead = time.perf_counter() - t_obs0
 
         if not batches:
@@ -610,9 +605,29 @@ class SVRenderer:
         W, H = s.width, s.height
         vp = self._last_vp
 
+        # Extrai laterais dos volumes e segmentos de silhueta sob demanda (apenas na vista 3D)
+        vol_sides = []
+        sil_segments = []
+        vis_len = s.extrude_len if s.extrude_len > 0 else 40.0
+        for prop in self.scene:
+            if not prop.occluder:
+                continue
+            pw, _ = self._world(prop)
+            sides3, _, _ = sv.build_volume(
+                pw, prop.solid.indices, prop.solid.dir_edges,
+                prop.solid.edge_face, prop.solid.edge_opp,
+                self.light, vis_len, caps=False)
+            if sides3.shape[0]:
+                vol_sides.append(sides3)
+            seg = sv.extract_silhouette_segments(
+                pw, prop.solid.indices, prop.solid.dir_edges,
+                prop.solid.edge_face, prop.solid.edge_opp, self.light)
+            if seg.shape[0]:
+                sil_segments.append(seg)
+
         # 1. Preenchimento semitransparente das faces laterais dos volumes
-        if self._last_vol_sides:
-            sides = np.concatenate(self._last_vol_sides, axis=0)
+        if vol_sides:
+            sides = np.concatenate(vol_sides, axis=0)
             clip = self._project(sides, vp)
             front_tint = np.array([255.0, 200.0, 50.0], dtype=F)
             back_tint = np.array([60.0, 170.0, 255.0], dtype=F)
@@ -643,8 +658,8 @@ class SVRenderer:
                                            (235, 185, 45), alpha=0.45)
 
         # 2. Arestas de silhueta em destaque (ciano brilhante)
-        if self._last_sil_segments:
-            segs = np.concatenate(self._last_sil_segments, axis=0)  # (S, 2, 3)
+        if sil_segments:
+            segs = np.concatenate(sil_segments, axis=0)  # (S, 2, 3)
             pts = segs.reshape(-1, 3)
             ph = np.concatenate([pts, np.ones((pts.shape[0], 1), dtype=F)], axis=1)
             clip_s = (vp @ ph.T).T.astype(F).reshape(-1, 2, 4)

@@ -16,11 +16,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = ["moderngl>=5.8"]
 dev = ["pytest>=7.0"]
 
 [project.scripts]
-aethelion = "main:main"
+aethelion = "aethelion.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["aethelion*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

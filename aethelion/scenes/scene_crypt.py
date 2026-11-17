@@ -83,7 +83,6 @@ class Solid:
     dir_edges: np.ndarray
     edge_face: np.ndarray
     edge_opp: np.ndarray
-    smooth: bool = True
 
     @property
     def tri_count(self) -> int:
@@ -94,10 +93,10 @@ class Solid:
         return bool(np.all(self.edge_opp >= 0))
 
 
-def make_solid(positions, indices, smooth: bool = True) -> Solid:
+def make_solid(positions, indices) -> Solid:
     p, i = weld(np.asarray(positions, F), np.asarray(indices, np.int32))
     de, ef, eo = topology(i)
-    return Solid(p, i, vertex_normals(p, i), de, ef, eo, smooth)
+    return Solid(p, i, vertex_normals(p, i), de, ef, eo)
 
 
 @dataclass
@@ -126,7 +125,7 @@ def box(sx=1.0, sy=1.0, sz=1.0) -> Solid:
         [0, 4, 7], [0, 7, 3],   # -X
         [1, 2, 6], [1, 6, 5],   # +X
     ], dtype=np.int32)
-    return make_solid(p, idx, smooth=False)
+    return make_solid(p, idx)
 
 
 def cylinder(segments: int = 14, radius: float = 0.5, height: float = 1.0) -> Solid:
@@ -146,7 +145,7 @@ def cylinder(segments: int = 14, radius: float = 0.5, height: float = 1.0) -> So
         tris += [[a, c, b], [b, c, d]]      # lateral
         tris += [[cb, b, a]]                # tampa inferior
         tris += [[ct, c, d]]                # tampa superior
-    return make_solid(p, np.array(tris, dtype=np.int32), smooth=True)
+    return make_solid(p, np.array(tris, dtype=np.int32))
 
 
 def uv_sphere(stacks: int = 10, slices: int = 14, radius: float = 0.5) -> Solid:
@@ -175,7 +174,7 @@ def uv_sphere(stacks: int = 10, slices: int = 14, radius: float = 0.5) -> Solid:
     last = 1 + (stacks - 2) * slices
     for j in range(slices):
         tris.append([south, last + (j + 1) % slices, last + j])
-    return make_solid(p, np.array(tris, dtype=np.int32), smooth=True)
+    return make_solid(p, np.array(tris, dtype=np.int32))
 
 
 def torus_solid(seg_u: int = 16, seg_v: int = 9, r_major=0.5, r_minor=0.17) -> Solid:
@@ -197,7 +196,7 @@ def torus_solid(seg_u: int = 16, seg_v: int = 9, r_major=0.5, r_minor=0.17) -> S
             d = ((i + 1) % seg_u) * seg_v + (j + 1) % seg_v
             tris += [[a, c, b], [b, c, d]]
     return make_solid(np.array(pts, dtype=F),
-                      np.array(tris, dtype=np.int32), smooth=True)
+                      np.array(tris, dtype=np.int32))
 
 
 # --------------------------------------------------------------------------- #

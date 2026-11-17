@@ -160,8 +160,13 @@ def point_in_volume(point: np.ndarray, tris: np.ndarray) -> bool:
     """
     if tris.shape[0] == 0:
         return False
+    pt = np.asarray(point, dtype=F)
+    vmin = tris.min(axis=(0, 1))
+    vmax = tris.max(axis=(0, 1))
+    if np.any(pt < vmin - 1e-4) or np.any(pt > vmax + 1e-4):
+        return False
     direction = np.array([0.5773503, 0.5773503, 0.5773503], dtype=F)
-    hits = _ray_hits(point.astype(F), direction, tris)
+    hits = _ray_hits(pt, direction, tris)
     return bool(hits % 2 == 1)
 
 
