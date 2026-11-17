@@ -17,7 +17,7 @@ from .precision import apply_precision, quantize_depth
 from .clipping import clip_near
 from .raster import scan_triangle
 from .stencil import FUNCS, OPS, StencilBuffer, apply_op, compare
-from . texture import PATTERNS, Texture, make_textures
+from .texture import PATTERNS, Texture, make_textures
 from .shadow import (
     build_volume,
     build_volume_homogeneous,

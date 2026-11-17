@@ -43,7 +43,7 @@ def occluder_soup(props, world_fn: Callable | None = None) -> np.ndarray:
 
 def shadow_mask_raycast(points: np.ndarray, light: np.ndarray,
                         tris: np.ndarray, bias: float = 2.5e-3,
-                        chunk: int = 2048) -> np.ndarray:
+                        chunk: int = 1024) -> np.ndarray:
     """True onde o ponto está em sombra. points: (N,3) em espaço de mundo."""
     n = points.shape[0]
     out = np.zeros(n, dtype=bool)
@@ -52,31 +52,44 @@ def shadow_mask_raycast(points: np.ndarray, light: np.ndarray,
 
     v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
     e1, e2 = v1 - v0, v2 - v0
+    tri_min = tris.min(axis=1)
+    tri_max = tris.max(axis=1)
 
     for start in range(0, n, chunk):
         pts = points[start:start + chunk]
+        # Poda exata por AABB do feixe de segmentos [pts -> light]
+        rmin = np.minimum(pts.min(axis=0), light) - F(1e-2)
+        rmax = np.maximum(pts.max(axis=0), light) + F(1e-2)
+        cand = np.all((tri_max >= rmin[None, :]) & (tri_min <= rmax[None, :]), axis=1)
+        if not cand.any():
+            continue
+
+        v0_c = v0[cand]
+        e1_c = e1[cand]
+        e2_c = e2[cand]
+
         d = light[None, :] - pts
         dist = np.linalg.norm(d, axis=1, keepdims=True)
         dirs = d / np.maximum(dist, 1e-9)
         origin = pts + dirs * bias
         limit = (dist[:, 0] - 2.0 * bias)
 
-        # (P, T) por broadcasting
-        pv = np.cross(dirs[:, None, :], e2[None, :, :])
-        det = np.einsum("ptj,tj->pt", pv, e1)
+        # (P, T_cand) por broadcasting
+        pv = np.cross(dirs[:, None, :], e2_c[None, :, :])
+        det = np.einsum("ptj,tj->pt", pv, e1_c)
         ok = np.abs(det) > 1e-9
         inv = np.zeros_like(det)
         np.divide(1.0, det, out=inv, where=ok)
 
-        tvec = origin[:, None, :] - v0[None, :, :]
+        tvec = origin[:, None, :] - v0_c[None, :, :]
         u = np.einsum("ptj,ptj->pt", tvec, pv) * inv
         ok &= (u >= 0.0) & (u <= 1.0)
 
-        qv = np.cross(tvec, e1[None, :, :])
+        qv = np.cross(tvec, e1_c[None, :, :])
         v = np.einsum("pj,ptj->pt", dirs, qv) * inv
         ok &= (v >= 0.0) & ((u + v) <= 1.0)
 
-        t = np.einsum("tj,ptj->pt", e2, qv) * inv
+        t = np.einsum("tj,ptj->pt", e2_c, qv) * inv
         ok &= (t > 0.0) & (t < limit[:, None])
 
         out[start:start + chunk] = ok.any(axis=1)
@@ -139,3 +152,19 @@ def diff_image(pred: np.ndarray, truth: np.ndarray, visible: np.ndarray) -> np.n
     img[fp] = (210, 50, 40)
     img[fn] = (50, 90, 220)
     return img
+
+
+def evaluate_renderer_ground_truth(renderer) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Executa a referência por ray casting para o quadro atual de um `SVRenderer`.
+
+    Retorna `(mask_ref, mask_pred, visible)`. Exige que o quadro anterior tenha sido
+    renderizado com `capture_gbuffer=True`. Reutiliza o cache `renderer._world(prop)`.
+    """
+    vis = renderer.visible_mask
+    ref = np.zeros_like(vis)
+    if not vis.any():
+        return ref, renderer.shadow_mask, vis
+    pts = renderer.gbuf[vis]
+    tris = occluder_soup(renderer.scene, world_fn=renderer._world)
+    ref[vis] = shadow_mask_raycast(pts, renderer.light, tris)
+    return ref, renderer.shadow_mask, vis

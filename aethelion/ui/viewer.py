@@ -188,6 +188,8 @@ class Viewer:
             if self.run.active:
                 self.run.stop()
             else:
+                self.t_scene = 0.0
+                self.last = time.perf_counter()
                 self.run.start()
         elif k == pg.K_1:
             s.algorithm = "zpass"
@@ -233,14 +235,16 @@ class Viewer:
             self._screenshot()
 
     def _measure_now(self):
-        from ..evaluation.truth import compare_masks, diff_image
+        from ..evaluation.truth import compare_masks, diff_image, evaluate_renderer_ground_truth
+        t_m0 = time.perf_counter()
         self.r.capture_gbuffer = True
         self.r.render(self.t_scene)
-        ref, pred, vis = self.r.ground_truth()
+        ref, pred, vis = evaluate_renderer_ground_truth(self.r)
         self.run.last_agreement = compare_masks(pred[vis], ref[vis])
         self.run.last_diff = diff_image(pred, ref, vis)
         if self.run.active:
             self.run.note_manual("medicao manual contra a referencia")
+        self.last += (time.perf_counter() - t_m0)
 
     def _screenshot(self):
         try:
@@ -256,7 +260,7 @@ class Viewer:
     # ------------------------------------------------------------------ #
     def _frame_image(self):
         if self.run.active:
-            img = self.run.step(self.t_scene)
+            img = self.run.step()
             if img is None:
                 img = self.r.render(self.t_scene)
         else:

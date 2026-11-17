@@ -89,6 +89,8 @@ class StencilBuffer:
     def set_bits(self, bits: int) -> None:
         self.bits = int(np.clip(int(bits), 1, 8))
         self.max_val = (1 << self.bits) - 1
+        if hasattr(self, "buf"):
+            self.buf &= self.max_val
 
     def resize(self, width: int, height: int) -> None:
         if (int(width), int(height)) != (self.width, self.height):

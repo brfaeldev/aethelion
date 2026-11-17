@@ -12,11 +12,11 @@ from aethelion.core.shadow import (
     point_in_volume,
 )
 from aethelion.core.sv_renderer import SVRenderer, SVSettings
-from aethelion.evaluation.truth import compare_masks
-from aethelion.scenes.scene_crypt import box, topology
+from aethelion.evaluation.truth import compare_masks, evaluate_renderer_ground_truth
+from aethelion.scenes.scene_crypt import box, topology, weld
 
 
-def test_shadow_volume_is_closed_and_point_in_volume():
+def test_shadow_volume_is_closed_and_orientable_outward():
     b = box(1.0, 1.0, 1.0)
     light = np.array([0.0, 3.0, 0.0], dtype=np.float32)
     sides, front, back = build_volume(
@@ -28,10 +28,23 @@ def test_shadow_volume_is_closed_and_point_in_volume():
     assert back.shape[0] > 0
 
     closed = np.concatenate([sides, front, back], axis=0)
-    # Ponto logo abaixo do cubo (0, -2, 0) deve estar dentro do volume de sombra
+    # 1. Ponto logo abaixo do cubo (0, -2, 0) deve estar dentro do volume de sombra
     assert point_in_volume(np.array([0.0, -2.0, 0.0], dtype=np.float32), closed)
-    # Ponto acima da luz (0, 5, 0) deve estar fora do volume de sombra
+    # 2. Ponto acima da luz (0, 5, 0) deve estar fora do volume de sombra
     assert not point_in_volume(np.array([0.0, 5.0, 0.0], dtype=np.float32), closed)
+
+    # 3. O volume fechado soldado deve ser 2-manifold sem bordas abertas
+    verts = closed.reshape(-1, 3)
+    idx = np.arange(verts.shape[0], dtype=np.int32).reshape(-1, 3)
+    w_pos, w_idx = weld(verts, idx)
+    de, _, opp = topology(w_idx)
+    assert np.all(opp >= 0), "Volume de sombra fechado não deve conter arestas abertas"
+
+    # 4. Volume com sinal (Teorema da Divergência) deve ser estritamente positivo,
+    # comprovando que todas as faces (front, sides e back) têm normais apontando para fora.
+    v0, v1, v2 = closed[:, 0], closed[:, 1], closed[:, 2]
+    signed_vol6 = float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))))
+    assert signed_vol6 > 1.0, f"Normais invertidas no volume de sombra: {signed_vol6}"
 
 
 def test_build_volume_without_caps_for_zpass():
@@ -80,9 +93,24 @@ def test_per_fragment_depth_quantization_and_agreement():
 
 
 def test_renderer_runs_both_finite_and_infinite_and_overlay():
-    r = SVRenderer(SVSettings(width=64, height=48, detail=0.5, infinite_extrude=True))
+    r = SVRenderer(SVSettings(width=96, height=72, detail=0.6, infinite_extrude=True))
+    r.capture_gbuffer = True
     img = r.render(0.5)
-    assert img.shape == (48, 64, 3)
+    assert img.shape == (72, 96, 3)
     assert r.stats.mem_total_kb > 0.0
     ov = r.render_volume_overlay(img)
-    assert ov.shape == (48, 64, 3)
+    assert ov.shape == (72, 96, 3)
+
+    # Concordância de z-fail e z-pass com câmera externa (sem wrap espúrio em 8 bits)
+    ref, pred, vis = evaluate_renderer_ground_truth(r)
+    ag_zfail = compare_masks(pred[vis], ref[vis])
+    assert ag_zfail.f1 > 0.92
+    assert r.stats.stencil_wrap_events == 0
+
+    r.settings.algorithm = "zpass"
+    r.settings.infinite_extrude = False
+    r.render(0.5)
+    ref, pred, vis = evaluate_renderer_ground_truth(r)
+    ag_zpass = compare_masks(pred[vis], ref[vis])
+    assert ag_zpass.f1 > 0.92
+    assert r.stats.stencil_wrap_events == 0
