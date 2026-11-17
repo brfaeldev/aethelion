@@ -30,12 +30,6 @@ def face_facing(pw: np.ndarray, indices: np.ndarray, light: np.ndarray) -> np.nd
     return np.einsum("ij,ij->i", n, light[None, :] - centroid) > 0.0
 
 
-def _extrude(points: np.ndarray, light: np.ndarray, length: float) -> np.ndarray:
-    d = points - light[None, :]
-    n = np.linalg.norm(d, axis=1, keepdims=True)
-    return (points + d / np.maximum(n, 1e-9) * F(length)).astype(F)
-
-
 def _extrude_homogeneous(points: np.ndarray, light: np.ndarray,
                          length: float, infinite: bool = False) -> np.ndarray:
     """Devolve vértices extrudados em coordenadas homogêneas (N, 4).
@@ -54,61 +48,27 @@ def _extrude_homogeneous(points: np.ndarray, light: np.ndarray,
     return np.concatenate([fin, np.ones((points.shape[0], 1), dtype=F)], axis=1)
 
 
+def _select_silhouette(pw: np.ndarray, indices: np.ndarray,
+                       edge_face: np.ndarray, edge_opp: np.ndarray,
+                       light: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Calcula a máscara de faces iluminadas e os índices das arestas de silhueta."""
+    facing = face_facing(pw, indices, light)
+    if not facing.any():
+        return facing, np.empty(0, dtype=np.intp)
+    is_sil = facing[edge_face] & ((edge_opp < 0) | ~facing[np.maximum(edge_opp, 0)])
+    return facing, np.nonzero(is_sil)[0]
+
+
 def extract_silhouette_segments(pw: np.ndarray, indices: np.ndarray,
                                 dir_edges: np.ndarray, edge_face: np.ndarray,
                                 edge_opp: np.ndarray, light: np.ndarray) -> np.ndarray:
     """Retorna os segmentos 3D (S, 2, 3) das arestas de silhueta para inspeção visual."""
-    facing = face_facing(pw, indices, light)
-    if not facing.any():
-        return np.zeros((0, 2, 3), dtype=F)
-    opp = edge_opp
-    is_sil = facing[edge_face] & ((opp < 0) | ~facing[np.maximum(opp, 0)])
-    sel = np.nonzero(is_sil)[0]
+    _, sel = _select_silhouette(pw, indices, edge_face, edge_opp, light)
     if not sel.size:
         return np.zeros((0, 2, 3), dtype=F)
     a = pw[dir_edges[sel, 0]]
     b = pw[dir_edges[sel, 1]]
     return np.stack([a, b], axis=1).astype(F)
-
-
-def build_volume(pw, indices, dir_edges, edge_face, edge_opp,
-                 light, length: float, caps: bool = True):
-    """Gera o volume de sombra como sopa de triângulos em espaço de mundo (3D).
-
-    Retorna (sides (A,3,3), front_cap (B,3,3), back_cap (C,3,3)).
-    `sides` são os quadriláteros extrudados; as tampas vêm separadas porque
-    z-pass pode descartá-las (`caps=False`) e z-fail exige ambas (`caps=True`).
-    """
-    facing = face_facing(pw, indices, light)
-    if not facing.any():
-        z = np.zeros((0, 3, 3), dtype=F)
-        return z, z, z
-
-    opp = edge_opp
-    is_sil = facing[edge_face] & ((opp < 0) | ~facing[np.maximum(opp, 0)])
-    sel = np.nonzero(is_sil)[0]
-
-    if sel.size:
-        a = pw[dir_edges[sel, 0]]
-        b = pw[dir_edges[sel, 1]]
-        a2 = _extrude(a, light, length)
-        b2 = _extrude(b, light, length)
-        sides = np.concatenate([
-            np.stack([a, b, b2], axis=1),
-            np.stack([a, b2, a2], axis=1),
-        ], axis=0).astype(F)
-    else:
-        sides = np.zeros((0, 3, 3), dtype=F)
-
-    if not caps:
-        z = np.zeros((0, 3, 3), dtype=F)
-        return sides, z, z
-
-    lit = indices[facing]
-    front = np.stack([pw[lit[:, 0]], pw[lit[:, 1]], pw[lit[:, 2]]], axis=1).astype(F)
-    ext = _extrude(pw, light, length)
-    back = np.stack([ext[lit[:, 0]], ext[lit[:, 2]], ext[lit[:, 1]]], axis=1).astype(F)
-    return sides, front, back
 
 
 def build_volume_homogeneous(pw, indices, dir_edges, edge_face, edge_opp,
@@ -119,14 +79,10 @@ def build_volume_homogeneous(pw, indices, dir_edges, edge_face, edge_opp,
     Quando infinite=True, os vértices extrudados das laterais e da tampa
     traseira possuem w = 0 (direções puras no infinito segundo Everitt & Kilgard, 2002).
     """
-    facing = face_facing(pw, indices, light)
+    facing, sel = _select_silhouette(pw, indices, edge_face, edge_opp, light)
     if not facing.any():
         z = np.zeros((0, 3, 4), dtype=F)
         return z, z, z
-
-    opp = edge_opp
-    is_sil = facing[edge_face] & ((opp < 0) | ~facing[np.maximum(opp, 0)])
-    sel = np.nonzero(is_sil)[0]
 
     pw_h = np.concatenate([pw, np.ones((pw.shape[0], 1), dtype=F)], axis=1)
     ext_h = _extrude_homogeneous(pw, light, length, infinite=infinite)
@@ -135,9 +91,13 @@ def build_volume_homogeneous(pw, indices, dir_edges, edge_face, edge_opp,
         ia, ib = dir_edges[sel, 0], dir_edges[sel, 1]
         a, b = pw_h[ia], pw_h[ib]
         a2, b2 = ext_h[ia], ext_h[ib]
+        # A tampa frontal percorre a aresta de silhueta como (a -> b).
+        # Para que o volume fechado seja 2-manifold orientável com normais
+        # externas consistentes em todas as faces, o quadrilátero lateral
+        # deve percorrer a aresta compartilhada no sentido oposto (b -> a).
         sides = np.concatenate([
-            np.stack([a, b, b2], axis=1),
-            np.stack([a, b2, a2], axis=1),
+            np.stack([b, a, a2], axis=1),
+            np.stack([b, a2, b2], axis=1),
         ], axis=0).astype(F)
     else:
         sides = np.zeros((0, 3, 4), dtype=F)
@@ -150,6 +110,20 @@ def build_volume_homogeneous(pw, indices, dir_edges, edge_face, edge_opp,
     front = np.stack([pw_h[lit[:, 0]], pw_h[lit[:, 1]], pw_h[lit[:, 2]]], axis=1).astype(F)
     back = np.stack([ext_h[lit[:, 0]], ext_h[lit[:, 2]], ext_h[lit[:, 1]]], axis=1).astype(F)
     return sides, front, back
+
+
+def build_volume(pw, indices, dir_edges, edge_face, edge_opp,
+                 light, length: float, caps: bool = True):
+    """Gera o volume de sombra finito como sopa de triângulos em espaço de mundo 3D (N, 3, 3).
+
+    Retorna (sides (A,3,3), front_cap (B,3,3), back_cap (C,3,3)).
+    Reutiliza `build_volume_homogeneous(..., infinite=False)` projetando para 3D.
+    """
+    sides_h, front_h, back_h = build_volume_homogeneous(
+        pw, indices, dir_edges, edge_face, edge_opp,
+        light, length=length, infinite=False, caps=caps,
+    )
+    return sides_h[..., :3], front_h[..., :3], back_h[..., :3]
 
 
 def point_in_volume(point: np.ndarray, tris: np.ndarray) -> bool:
@@ -165,7 +139,8 @@ def point_in_volume(point: np.ndarray, tris: np.ndarray) -> bool:
     vmax = tris.max(axis=(0, 1))
     if np.any(pt < vmin - 1e-4) or np.any(pt > vmax + 1e-4):
         return False
-    direction = np.array([0.5773503, 0.5773503, 0.5773503], dtype=F)
+    # Direção unitária assimétrica para evitar planos de simetria (x=z, x=y) de malhas alinhadas aos eixos
+    direction = np.array([0.43643578, 0.87287156, 0.21821789], dtype=F)
     hits = _ray_hits(pt, direction, tris)
     return bool(hits % 2 == 1)
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from ..core.sv_renderer import BACKEND, SVRenderer, SVSettings
-from .truth import Agreement, compare_masks, diff_image
+from .truth import Agreement, compare_masks, diff_image, evaluate_renderer_ground_truth
 
 F = np.float32
 
@@ -87,24 +87,29 @@ def camera_for(kind: str, u: float):
     """Trajetórias determinísticas. u in [0,1] dentro da fase."""
     tau = 2.0 * np.pi
     if kind == "orbita":
+        # Permanece dentro das paredes laterais (|x| <= 3.8 < 5.2) e acima do
+        # topo das vigas (y >= 2.18 > 2.07), garantindo volumes_with_camera == 0.
         ang = tau * u
-        eye = np.array([6.6 * np.sin(ang), 1.55 + 0.5 * np.sin(2 * ang),
-                        6.6 * np.cos(ang)], dtype=F)
-        tgt = np.array([0.0, 0.25, 0.0], dtype=F)
+        eye = np.array([3.8 * np.sin(ang), 2.34 + 0.16 * np.sin(2 * ang),
+                        5.6 * np.cos(ang)], dtype=F)
+        tgt = np.array([0.0, -0.35, 0.0], dtype=F)
     elif kind == "travessia":
-        # Entra pela nave, passa rente às colunas e sai pelo fundo
-        z = 7.0 - 15.0 * u
-        eye = np.array([1.35 * np.sin(tau * u), 0.55 + 0.35 * np.sin(3 * tau * u),
-                        z], dtype=F)
-        tgt = np.array([0.0, 0.45, z - 3.0], dtype=F)
+        # Atravessa os cones de sombra das colunas, da estátua e da grade (volumes_with_camera > 0)
+        ang = tau * u
+        eye = np.array([3.35 * np.sin(ang), -0.15 + 0.25 * np.cos(2 * ang),
+                        3.8 * np.cos(ang) - 1.2], dtype=F)
+        tgt = np.array([0.0, -0.45, -0.5], dtype=F)
     elif kind == "grade":
-        eye = np.array([-1.4 + 2.8 * u, 0.35 + 0.25 * np.sin(tau * u), -1.6],
-                       dtype=F)
-        tgt = np.array([0.0, 0.2, -5.1], dtype=F)
+        # Vista transversal ao leque das 11 barras da grade (z = -4.9): cada raio
+        # cruza 8..11 volumes de sombra em série, excedendo o limite de 3 bits (max=7).
+        eye = np.array([-3.65 + 0.35 * np.sin(tau * u),
+                        -0.10 + 0.15 * np.cos(tau * u),
+                        -5.55], dtype=F)
+        tgt = np.array([2.80, -0.80, -5.65], dtype=F)
     elif kind == "rasante":
-        eye = np.array([5.2 * np.cos(tau * u * 0.5), -0.95,
-                        5.2 * np.sin(tau * u * 0.5)], dtype=F)
-        tgt = np.array([0.0, -1.35, 0.0], dtype=F)
+        eye = np.array([4.2 * np.cos(tau * u * 0.5), -1.05,
+                        4.2 * np.sin(tau * u * 0.5)], dtype=F)
+        tgt = np.array([0.0, -1.38, 0.0], dtype=F)
     else:
         eye = np.array([0.0, 1.0, 6.5], dtype=F)
         tgt = np.zeros(3, dtype=F)
@@ -322,7 +327,7 @@ class ExperimentRunner:
         })
         if measure:
             t_gt0 = time.perf_counter()
-            ref, pred, vis = self.r.ground_truth()
+            ref, pred, vis = evaluate_renderer_ground_truth(self.r)
             ag = compare_masks(pred[vis], ref[vis])
             self.last_agreement = ag
             self.last_diff = diff_image(pred, ref, vis)
@@ -353,14 +358,30 @@ class ExperimentRunner:
         self.write_outputs()
 
     def write_outputs(self) -> None:
-        exp = os.path.join(self.outdir, "experimento.csv")
+        phases_seen = {r["fase"] for r in self.rows}
+        is_partial = len(phases_seen) < len(self.phases)
+        res_default = os.path.join(self.outdir, "resumo.csv")
+        preserve_existing = False
+        if is_partial and os.path.exists(res_default):
+            try:
+                with open(res_default, newline="", encoding="utf-8") as f:
+                    existing_rows = list(csv.DictReader(f))
+                if len(existing_rows) >= len(self.phases):
+                    preserve_existing = True
+            except Exception:
+                preserve_existing = False
+
+        exp_name = "experimento_parcial.csv" if preserve_existing else "experimento.csv"
+        res_name = "resumo_parcial.csv" if preserve_existing else "resumo.csv"
+
+        exp = os.path.join(self.outdir, exp_name)
         with open(exp, "w", newline="", encoding="utf-8") as f:
             wr = csv.DictWriter(f, fieldnames=CSV_FIELDS)
             wr.writeheader()
             wr.writerows(self.rows)
         self.log(f"-> {exp}")
 
-        res = os.path.join(self.outdir, "resumo.csv")
+        res = os.path.join(self.outdir, res_name)
         num = ["ms_total", "fps", "ms_geometry", "ms_silhouette", "ms_stencil",
                "tris_volume", "tris_volume_drawn", "frag_stencil",
                "pixels_shadow", "pixels_visible", "volumes_with_camera",
@@ -434,7 +455,7 @@ def _eval_sv_config(s: SVSettings, label: str, frames: int = 5) -> dict:
         st = r.stats
         ms_list.append(st.ms_total)
         fps_list.append(st.fps)
-        ref, pred, vis = r.ground_truth()
+        ref, pred, vis = evaluate_renderer_ground_truth(r)
         ag = compare_masks(pred[vis], ref[vis])
         f1_list.append(ag.f1)
         prec_list.append(ag.precision)

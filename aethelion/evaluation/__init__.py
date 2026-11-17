@@ -11,12 +11,20 @@ from .scenario import (
     run_headless,
     run_sv_sweeps,
 )
-from .truth import Agreement, compare_masks, diff_image, occluder_soup, shadow_mask_raycast
+from .truth import (
+    Agreement,
+    compare_masks,
+    diff_image,
+    evaluate_renderer_ground_truth,
+    occluder_soup,
+    shadow_mask_raycast,
+)
 
 __all__ = [
     "Agreement",
     "occluder_soup",
     "shadow_mask_raycast",
+    "evaluate_renderer_ground_truth",
     "compare_masks",
     "diff_image",
     "TESTS",

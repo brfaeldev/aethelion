@@ -36,39 +36,39 @@ def scan_triangle(sx, sy, width: int, height: int, min_area: float = 1e-9,
     Retorna (yy, xx, l0, l1, l2, area) ou None se o triângulo não cobre pixels.
     l0, l1, l2 são coordenadas baricêntricas normalizadas (somam 1).
     """
-    sx = np.asarray(sx, dtype=F)
-    sy = np.asarray(sy, dtype=F)
-    if not (np.all(np.isfinite(sx)) and np.all(np.isfinite(sy))):
+    sx64 = np.asarray(sx, dtype=np.float64)
+    sy64 = np.asarray(sy, dtype=np.float64)
+    if not (np.all(np.isfinite(sx64)) and np.all(np.isfinite(sy64))):
         return None
 
-    area = ((sx[1] - sx[0]) * (sy[2] - sy[0])
-            - (sx[2] - sx[0]) * (sy[1] - sy[0]))
+    area = float((sx64[1] - sx64[0]) * (sy64[2] - sy64[0])
+                 - (sx64[2] - sx64[0]) * (sy64[1] - sy64[0]))
     if not np.isfinite(area) or abs(area) < min_area:
         return None
     if cull_backface and area >= 0.0:
         return None
 
-    x0 = max(int(np.ceil(sx.min() - 0.5)), 0)
-    x1 = min(int(np.floor(sx.max() - 0.5)), width - 1)
-    y0 = max(int(np.ceil(sy.min() - 0.5)), 0)
-    y1 = min(int(np.floor(sy.max() - 0.5)), height - 1)
+    x0 = max(int(np.ceil(sx64.min() - 0.5)), 0)
+    x1 = min(int(np.floor(sx64.max() - 0.5)), width - 1)
+    y0 = max(int(np.ceil(sy64.min() - 0.5)), 0)
+    y1 = min(int(np.floor(sy64.max() - 0.5)), height - 1)
     if x0 > x1 or y0 > y1:
         return None
 
-    px = np.arange(x0, x1 + 1, dtype=F)[None, :] + F(0.5)
-    py = np.arange(y0, y1 + 1, dtype=F)[:, None] + F(0.5)
+    px = np.arange(x0, x1 + 1, dtype=np.float64)[None, :] + 0.5
+    py = np.arange(y0, y1 + 1, dtype=np.float64)[:, None] + 0.5
 
     # Orienta funções de aresta e vetores diretores pelo sinal de area,
     # evitando resíduos de ponto flutuante na 3ª aresta e garantindo que
     # _top_left respeite o sentido ciclicamente orientado do interior.
-    s = F(1.0) if area > 0.0 else F(-1.0)
-    e0 = ((sx[1] - px) * (sy[2] - py) - (sx[2] - px) * (sy[1] - py)) * s
-    e1 = ((sx[2] - px) * (sy[0] - py) - (sx[0] - px) * (sy[2] - py)) * s
-    e2 = ((sx[0] - px) * (sy[1] - py) - (sx[1] - px) * (sy[0] - py)) * s
+    s = 1.0 if area > 0.0 else -1.0
+    e0 = ((sx64[1] - px) * (sy64[2] - py) - (sx64[2] - px) * (sy64[1] - py)) * s
+    e1 = ((sx64[2] - px) * (sy64[0] - py) - (sx64[0] - px) * (sy64[2] - py)) * s
+    e2 = ((sx64[0] - px) * (sy64[1] - py) - (sx64[1] - px) * (sy64[0] - py)) * s
 
-    tl0 = _top_left(float((sx[2] - sx[1]) * s), float((sy[2] - sy[1]) * s))
-    tl1 = _top_left(float((sx[0] - sx[2]) * s), float((sy[0] - sy[2]) * s))
-    tl2 = _top_left(float((sx[1] - sx[0]) * s), float((sy[1] - sy[0]) * s))
+    tl0 = _top_left(float((sx64[2] - sx64[1]) * s), float((sy64[2] - sy64[1]) * s))
+    tl1 = _top_left(float((sx64[0] - sx64[2]) * s), float((sy64[0] - sy64[2]) * s))
+    tl2 = _top_left(float((sx64[1] - sx64[0]) * s), float((sy64[1] - sy64[0]) * s))
 
     m0 = (e0 > 0.0) | ((e0 == 0.0) & tl0)
     m1 = (e1 > 0.0) | ((e1 == 0.0) & tl1)
@@ -77,9 +77,9 @@ def scan_triangle(sx, sy, width: int, height: int, min_area: float = 1e-9,
     if not mask.any():
         return None
 
-    inv_abs = F(1.0) / abs(area)
-    l0 = e0[mask] * inv_abs
-    l1 = e1[mask] * inv_abs
+    inv_abs = 1.0 / abs(area)
+    l0 = (e0[mask] * inv_abs).astype(F)
+    l1 = (e1[mask] * inv_abs).astype(F)
     l2 = F(1.0) - l0 - l1
 
     yy, xx = np.nonzero(mask)

@@ -182,11 +182,16 @@ class SVRenderer:
         depth_b = 32.0 if s.depth_bits <= 0 else float(s.depth_bits)
         depth_bytes = px * (depth_b / 8.0)
         stencil_bytes = px * (float(s.stencil_bits) / 8.0) if s.algorithm != "none" else 0.0
-        st.mem_buffers_kb = round((color_bytes + depth_bytes + stencil_bytes) / 1024.0, 2)
+        tex_bytes = (
+            len(self.textures) * (int(s.texture_res) ** 2) * 3.0 * (int(s.color_bits) / 8.0)
+            if s.textured else 0.0
+        )
+        st.mem_buffers_kb = round((color_bytes + depth_bytes + stencil_bytes + tex_bytes) / 1024.0, 2)
 
-        # Cada triângulo na cena tem 3 vértices (pos 3f + normal 3f) e no volume 3 vértices (4f homogêneos)
+        # Cada triângulo na cena tem 3 vértices (pos 3f + normal 3f) e no volume 3 vértices (3f finitos ou 4f homogêneos)
+        vol_coords = 4 if (s.infinite_extrude or s.extrude_len <= 0.0) else 3
         scene_bytes = st.tris_scene * 3 * 6 * 4
-        vol_bytes = st.tris_volume * 3 * 4 * 4
+        vol_bytes = st.tris_volume * 3 * vol_coords * 4
         st.mem_geometry_kb = round((scene_bytes + vol_bytes) / 1024.0, 2)
         st.mem_total_kb = round(st.mem_buffers_kb + st.mem_geometry_kb, 2)
 
@@ -454,10 +459,23 @@ class SVRenderer:
                 continue
             pw, _ = self._world(prop)
             if use_inf:
-                sides, front, back = sv.build_volume_homogeneous(
-                    pw, prop.solid.indices, prop.solid.dir_edges,
-                    prop.solid.edge_face, prop.solid.edge_opp,
-                    self.light, length=ext_len, infinite=True, caps=zfail)
+                # Verifica se todos os raios extrudados apontam para o semiespaço frontal
+                # da câmera (w_clip > 0). Se algum raio apontar para trás da câmera
+                # (cruzando o plano near finito), ancora a extrusão na origem finita pw
+                # sob P_inf para que clip_near recorte em z_ndc = -1 (near) e não em +1 (far).
+                d_world = pw - self.light[None, :]
+                d_h = np.concatenate([d_world, np.zeros((pw.shape[0], 1), dtype=F)], axis=1)
+                w_inf_clip = (vp @ d_h.T).T[:, 3]
+                if np.all(w_inf_clip > 1e-3):
+                    sides, front, back = sv.build_volume_homogeneous(
+                        pw, prop.solid.indices, prop.solid.dir_edges,
+                        prop.solid.edge_face, prop.solid.edge_opp,
+                        self.light, length=ext_len, infinite=True, caps=zfail)
+                else:
+                    sides, front, back = sv.build_volume_homogeneous(
+                        pw, prop.solid.indices, prop.solid.dir_edges,
+                        prop.solid.edge_face, prop.solid.edge_opp,
+                        self.light, length=500.0, infinite=False, caps=zfail)
                 occluder_cache.append((prop, pw, None))
             else:
                 sides, front, back = sv.build_volume(
@@ -516,6 +534,8 @@ class SVRenderer:
         )
 
         # 3a. Triagem vetorizada para triângulos de volume totalmente à frente do near
+        incr_tris = []
+        decr_tris = []
         safe_ids = np.nonzero(unclipped)[0]
         if safe_ids.size:
             c_safe = clip[safe_ids]
@@ -539,7 +559,9 @@ class SVRenderer:
             )
             z_s = ndc[..., 2].astype(F)
             for k in np.nonzero(keep_tri)[0]:
-                self._raster_volume_tri(sx[k], sy[k], z_s[k], zfail, incr, decr, st)
+                front_facing = bool(area[k] < 0.0)
+                is_incr = (not front_facing) if zfail else front_facing
+                (incr_tris if is_incr else decr_tris).append((sx[k], sy[k], z_s[k]))
 
         # 3b. Triângulos de volume que cruzam o plano near
         for m in np.nonzero(~unclipped)[0]:
@@ -547,8 +569,22 @@ class SVRenderer:
                 scr = self._screen(cp)
                 if scr is None:
                     continue
-                sx, sy, z, _ = scr
-                self._raster_volume_tri(sx, sy, z, zfail, incr, decr, st)
+                sx_c, sy_c, z_c, _ = scr
+                a_c = ((sx_c[1] - sx_c[0]) * (sy_c[2] - sy_c[0])
+                       - (sx_c[2] - sx_c[0]) * (sy_c[1] - sy_c[0]))
+                if not np.isfinite(a_c) or abs(a_c) < 1e-9:
+                    continue
+                front_facing = bool(a_c < 0.0)
+                is_incr = (not front_facing) if zfail else front_facing
+                (incr_tris if is_incr else decr_tris).append((sx_c, sy_c, z_c))
+
+        # 3c. Ordem de duas passagens (Everitt & Kilgard, 2002, Seção 2.1):
+        # primeiro as faces que incrementam o stencil (INCR/INCR_WRAP), depois as
+        # que decrementam (DECR/DECR_WRAP), evitando underflow espúrio em 0.
+        for sx_t, sy_t, z_t in incr_tris:
+            self._raster_volume_tri(sx_t, sy_t, z_t, zfail, incr, decr, st)
+        for sx_t, sy_t, z_t in decr_tris:
+            self._raster_volume_tri(sx_t, sy_t, z_t, zfail, incr, decr, st)
 
         st.ms_stencil = (time.perf_counter() - tr) * 1000.0
         return obs_overhead
@@ -608,17 +644,18 @@ class SVRenderer:
         # Extrai laterais dos volumes e segmentos de silhueta sob demanda (apenas na vista 3D)
         vol_sides = []
         sil_segments = []
+        use_inf = bool(s.infinite_extrude or s.extrude_len <= 0.0)
         vis_len = s.extrude_len if s.extrude_len > 0 else 40.0
         for prop in self.scene:
             if not prop.occluder:
                 continue
             pw, _ = self._world(prop)
-            sides3, _, _ = sv.build_volume(
+            sides_h, _, _ = sv.build_volume_homogeneous(
                 pw, prop.solid.indices, prop.solid.dir_edges,
                 prop.solid.edge_face, prop.solid.edge_opp,
-                self.light, vis_len, caps=False)
-            if sides3.shape[0]:
-                vol_sides.append(sides3)
+                self.light, length=vis_len, infinite=use_inf, caps=False)
+            if sides_h.shape[0]:
+                vol_sides.append(sides_h)
             seg = sv.extract_silhouette_segments(
                 pw, prop.solid.indices, prop.solid.dir_edges,
                 prop.solid.edge_face, prop.solid.edge_opp, self.light)
@@ -632,48 +669,88 @@ class SVRenderer:
             front_tint = np.array([255.0, 200.0, 50.0], dtype=F)
             back_tint = np.array([60.0, 170.0, 255.0], dtype=F)
 
-            for m in range(clip.shape[0]):
+            w_all = clip[..., 3]
+            z_all = clip[..., 2]
+            unclipped = (
+                np.all(w_all > 1e-5, axis=1)
+                & np.all((z_all + w_all) >= 0.0, axis=1)
+                & np.all(np.isfinite(clip), axis=(1, 2))
+            )
+            ov_tris = []
+            safe_ids = np.nonzero(unclipped)[0]
+            if safe_ids.size:
+                c_safe = clip[safe_ids]
+                w_s = c_safe[..., 3]
+                ndc = apply_precision((c_safe[..., :3] / w_s[..., None]).astype(F), s.precision)
+                sx_b = (ndc[..., 0] * F(0.5) + F(0.5)) * F(W)
+                sy_b = (F(1.0) - (ndc[..., 1] * F(0.5) + F(0.5))) * F(H)
+                keep_tri = (
+                    np.all(np.isfinite(ndc), axis=(1, 2))
+                    & (np.floor(sx_b.max(axis=1) - 0.5) >= 0)
+                    & (np.ceil(sx_b.min(axis=1) - 0.5) <= W - 1)
+                    & (np.floor(sy_b.max(axis=1) - 0.5) >= 0)
+                    & (np.ceil(sy_b.min(axis=1) - 0.5) <= H - 1)
+                )
+                z_b = ndc[..., 2].astype(F)
+                for k in np.nonzero(keep_tri)[0]:
+                    ov_tris.append((sx_b[k], sy_b[k], z_b[k]))
+
+            for m in np.nonzero(~unclipped)[0]:
                 for cp, _ in self._clip_parts(clip[m], []):
                     scr = self._screen(cp)
-                    if scr is None:
-                        continue
-                    sx, sy, z, _ = scr
-                    res = scan_triangle(sx, sy, W, H)
-                    if res is None:
-                        continue
-                    yy, xx, l0, l1, l2, area = res
-                    zz = l0 * z[0] + l1 * z[1] + l2 * z[2]
-                    vis = (zz >= -1.0) & (zz <= 1.0) & (zz < self.depth[yy, xx])
-                    if not vis.any():
-                        continue
-                    yy, xx = yy[vis], xx[vis]
-                    if area < 0.0:
-                        out[yy, xx] = out[yy, xx] * F(0.84) + front_tint * F(0.16)
-                    else:
-                        out[yy, xx] = out[yy, xx] * F(0.90) + back_tint * F(0.10)
-                    # Desenha as arestas projetadas do quadrilátero extrudado
-                    for i in range(3):
-                        j = (i + 1) % 3
-                        self._draw_line_2d(out, sx[i], sy[i], sx[j], sy[j],
-                                           (235, 185, 45), alpha=0.45)
+                    if scr is not None:
+                        ov_tris.append((scr[0], scr[1], scr[2]))
 
-        # 2. Arestas de silhueta em destaque (ciano brilhante)
+            for sx, sy, z in ov_tris:
+                res = scan_triangle(sx, sy, W, H)
+                if res is None:
+                    continue
+                yy, xx, l0, l1, l2, area = res
+                zz = l0 * z[0] + l1 * z[1] + l2 * z[2]
+                vis = (zz >= -1.0) & (zz <= 1.0) & (zz < self.depth[yy, xx])
+                if not vis.any():
+                    continue
+                yy, xx = yy[vis], xx[vis]
+                if area < 0.0:
+                    out[yy, xx] = out[yy, xx] * F(0.84) + front_tint * F(0.16)
+                else:
+                    out[yy, xx] = out[yy, xx] * F(0.90) + back_tint * F(0.10)
+                for i in range(3):
+                    j = (i + 1) % 3
+                    self._draw_line_2d(out, sx[i], sy[i], sx[j], sy[j],
+                                       (235, 185, 45), alpha=0.45,
+                                       z0=float(z[i]), z1=float(z[j]),
+                                       depth_buf=self.depth)
+
+        # 2. Arestas de silhueta em destaque (ciano brilhante) com recorte near e teste de profundidade
         if sil_segments:
             segs = np.concatenate(sil_segments, axis=0)  # (S, 2, 3)
             pts = segs.reshape(-1, 3)
             ph = np.concatenate([pts, np.ones((pts.shape[0], 1), dtype=F)], axis=1)
             clip_s = (vp @ ph.T).T.astype(F).reshape(-1, 2, 4)
             for k in range(clip_s.shape[0]):
-                w0, w1 = clip_s[k, 0, 3], clip_s[k, 1, 3]
-                if w0 <= 0.1 or w1 <= 0.1:
+                p0, p1 = clip_s[k, 0].copy(), clip_s[k, 1].copy()
+                d0, d1 = float(p0[2] + p0[3]), float(p1[2] + p1[3])
+                if d0 < 0.0 and d1 < 0.0:
                     continue
-                ndc0 = clip_s[k, 0, :3] / w0
-                ndc1 = clip_s[k, 1, :3] / w1
+                if d0 < 0.0 or d1 < 0.0:
+                    t_c = d0 / (d0 - d1) if abs(d0 - d1) > 1e-9 else 0.5
+                    pm = p0 + (p1 - p0) * F(t_c)
+                    if d0 < 0.0:
+                        p0 = pm
+                    else:
+                        p1 = pm
+                w0, w1 = float(p0[3]), float(p1[3])
+                if w0 <= 1e-4 or w1 <= 1e-4:
+                    continue
+                ndc0, ndc1 = p0[:3] / w0, p1[:3] / w1
                 x0 = (ndc0[0] * 0.5 + 0.5) * W
                 y0 = (1.0 - (ndc0[1] * 0.5 + 0.5)) * H
                 x1 = (ndc1[0] * 0.5 + 0.5) * W
                 y1 = (1.0 - (ndc1[1] * 0.5 + 0.5)) * H
-                self._draw_line_2d(out, x0, y0, x1, y1, (0, 255, 220), alpha=0.95)
+                self._draw_line_2d(out, x0, y0, x1, y1, (0, 255, 220), alpha=0.95,
+                                   z0=float(ndc0[2]), z1=float(ndc1[2]),
+                                   depth_buf=self.depth)
 
         # 3. Marcador da posição da luz pontual
         lh = np.array([self.light[0], self.light[1], self.light[2], 1.0], dtype=F)
@@ -692,7 +769,9 @@ class SVRenderer:
 
     @staticmethod
     def _draw_line_2d(buf: np.ndarray, x0: float, y0: float,
-                      x1: float, y1: float, color: tuple, alpha: float = 0.8) -> None:
+                      x1: float, y1: float, color: tuple, alpha: float = 0.8,
+                      z0: float | None = None, z1: float | None = None,
+                      depth_buf: np.ndarray | None = None) -> None:
         h, w, _ = buf.shape
         if not (np.isfinite(x0) and np.isfinite(y0) and np.isfinite(x1) and np.isfinite(y1)):
             return
@@ -704,24 +783,20 @@ class SVRenderer:
         ok = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
         if not ok.any():
             return
-        xs, ys = xs[ok], ys[ok]
+        if depth_buf is not None and z0 is not None and z1 is not None:
+            zs = np.linspace(z0, z1, steps + 1, dtype=F)[ok]
+            xs, ys = xs[ok], ys[ok]
+            vis = (zs >= -1.0) & (zs <= depth_buf[ys, xs] + F(2.5e-3))
+            if not vis.any():
+                return
+            xs, ys = xs[vis], ys[vis]
+        else:
+            xs, ys = xs[ok], ys[ok]
         col = np.array(color, dtype=F)
         buf[ys, xs] = buf[ys, xs] * F(1.0 - alpha) + col * F(alpha)
 
     # ------------------------------------------------------------------ #
     def ground_truth(self):
-        """Executa a referência por ray casting para o quadro atual.
-
-        Retorna (mask_ref, mask_pred, visible). Exige que o quadro anterior
-        tenha sido renderizado com capture_gbuffer=True. Reutiliza o cache
-        `self._world(prop)` para evitar recomputar matrizes de mundo.
-        """
-        from ..evaluation.truth import occluder_soup, shadow_mask_raycast
-        vis = self.visible_mask
-        ref = np.zeros_like(vis)
-        if not vis.any():
-            return ref, self.shadow_mask, vis
-        pts = self.gbuf[vis]
-        tris = occluder_soup(self.scene, world_fn=self._world)
-        ref[vis] = shadow_mask_raycast(pts, self.light, tris)
-        return ref, self.shadow_mask, vis
+        """Atalho de conveniência para `evaluation.truth.evaluate_renderer_ground_truth`."""
+        from ..evaluation.truth import evaluate_renderer_ground_truth
+        return evaluate_renderer_ground_truth(self)

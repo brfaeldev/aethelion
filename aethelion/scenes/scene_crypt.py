@@ -142,9 +142,9 @@ def cylinder(segments: int = 14, radius: float = 0.5, height: float = 1.0) -> So
     for i in range(segments):
         j = (i + 1) % segments
         a, b, c, d = i, j, segments + i, segments + j
-        tris += [[a, c, b], [b, c, d]]      # lateral
-        tris += [[cb, b, a]]                # tampa inferior
-        tris += [[ct, c, d]]                # tampa superior
+        tris += [[a, c, b], [b, c, d]]      # lateral (normal externa radial)
+        tris += [[cb, a, b]]                # tampa inferior (normal -Y)
+        tris += [[ct, d, c]]                # tampa superior (normal +Y)
     return make_solid(p, np.array(tris, dtype=np.int32))
 
 
@@ -163,17 +163,17 @@ def uv_sphere(stacks: int = 10, slices: int = 14, radius: float = 0.5) -> Solid:
     south = len(pts) - 1
     tris = []
     for j in range(slices):
-        tris.append([0, 1 + j, 1 + (j + 1) % slices])
+        tris.append([0, 1 + (j + 1) % slices, 1 + j])
     for i in range(stacks - 2):
         base = 1 + i * slices
         nxt = base + slices
         for j in range(slices):
             j2 = (j + 1) % slices
-            tris += [[base + j, nxt + j, base + j2],
-                     [base + j2, nxt + j, nxt + j2]]
+            tris += [[base + j, base + j2, nxt + j],
+                     [base + j2, nxt + j2, nxt + j]]
     last = 1 + (stacks - 2) * slices
     for j in range(slices):
-        tris.append([south, last + (j + 1) % slices, last + j])
+        tris.append([south, last + j, last + (j + 1) % slices])
     return make_solid(p, np.array(tris, dtype=np.int32))
 
 
@@ -194,7 +194,7 @@ def torus_solid(seg_u: int = 16, seg_v: int = 9, r_major=0.5, r_minor=0.17) -> S
             b = i * seg_v + (j + 1) % seg_v
             c = ((i + 1) % seg_u) * seg_v + j
             d = ((i + 1) % seg_u) * seg_v + (j + 1) % seg_v
-            tris += [[a, c, b], [b, c, d]]
+            tris += [[a, b, c], [b, d, c]]
     return make_solid(np.array(pts, dtype=F),
                       np.array(tris, dtype=np.int32))
 
@@ -262,10 +262,15 @@ def build_crypt(detail: float = 1.0) -> list[Prop]:
 
 
 def light_position(t: float) -> np.ndarray:
-    """Lâmpada que oscila entre as colunas. Determinística em t."""
-    return np.array([2.6 * np.sin(0.21 * t),
-                     2.35 + 0.45 * np.sin(0.37 * t),
-                     3.1 * np.cos(0.17 * t)], dtype=F)
+    """Lâmpada que oscila no corredor central entre as colunas. Determinística em t.
+
+    As fileiras de colunas/capitéis começam em |x| = 2.30 e as vigas ocupam
+    |x| in [2.44, 2.96], y in [1.69, 2.07]. A amplitude horizontal (1.95) e a
+    cota vertical (2.40 ± 0.35) mantêm a luz estritamente fora das malhas sólidas.
+    """
+    return np.array([1.95 * np.sin(0.21 * t),
+                     2.40 + 0.35 * np.sin(0.37 * t),
+                     3.10 * np.cos(0.17 * t)], dtype=F)
 
 
 def scene_tri_count(props: list[Prop]) -> int:
