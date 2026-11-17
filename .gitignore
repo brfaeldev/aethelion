@@ -17,6 +17,8 @@ dist/
 
 # Experiment & conformance outputs
 results/
+docs/
+DOCS/
 
 # IDE / Editor settings
 .vscode/
