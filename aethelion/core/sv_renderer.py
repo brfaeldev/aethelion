@@ -27,7 +27,7 @@ from . import mathutil as mu
 from . import shadow as sv
 from .clipping import clip_near
 from .precision import apply_precision, quantize_depth
-from .raster import scan_triangle
+from .raster import scan_triangle, scan_triangle_fast
 from .stencil import StencilBuffer
 from .texture import make_textures
 
@@ -69,12 +69,19 @@ class SVSettings:
     texture_filter: str = "nearest"
     color_bits: int = 8
     dither: bool = False
-    # Cena
+    # Cena e execução
     detail: float = 1.0
     ambient: float = 0.17
+    display_filter: str = "nearest"  # nearest | bilinear (escala na janela)
+    backend: str = "cpu-sw"          # cpu-sw | cpu-fast | gpu-gl
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SVSettings":
+        valid = {f.name for f in cls.__dataclass_fields__.values()}
+        return cls(**{k: v for k, v in data.items() if k in valid})
 
 
 @dataclass
@@ -112,6 +119,9 @@ class SVStats:
 
 # --------------------------------------------------------------------------- #
 class SVRenderer:
+    backend_name: str = BACKEND
+    _scan_fn = staticmethod(scan_triangle)
+
     def __init__(self, settings: SVSettings | None = None):
         self.settings = settings or SVSettings()
         self.scene: list[Prop] = build_crypt(self.settings.detail)
@@ -125,6 +135,8 @@ class SVRenderer:
         self.light = light_position(0.0)
         self.stats = SVStats()
         self._soups: dict[int, tuple] = {}
+        self._vol_cache_key: tuple | None = None
+        self._vol_cache_data: tuple | None = None
         self.capture_gbuffer = False
         self._alloc()
         self.shadow_mask = np.zeros((self.settings.height, self.settings.width), bool)
@@ -157,6 +169,8 @@ class SVRenderer:
     def rebuild_scene(self) -> None:
         self.scene = build_crypt(self.settings.detail)
         self._soups.clear()
+        self._vol_cache_key = None
+        self._vol_cache_data = None
 
     # ------------------------------------------------------------------ #
     def _world(self, prop: Prop):
@@ -377,7 +391,7 @@ class SVRenderer:
 
     def _shade_scene_tri(self, sx, sy, z, invw, lv, uvv, wpv, tex, tint, st: SVStats) -> None:
         s = self.settings
-        res = scan_triangle(sx, sy, s.width, s.height, cull_backface=True)
+        res = self._scan_fn(sx, sy, s.width, s.height, cull_backface=True)
         if res is None:
             return
         yy, xx, l0, l1, l2, _ = res
@@ -450,49 +464,63 @@ class SVRenderer:
         zfail = (s.algorithm == "zfail")
         ext_len = s.extrude_len if not use_inf else 40.0
 
-        # 2a. Construção de silhuetas e volumes do algoritmo (cronometrada)
+        # 2a. Construção de silhuetas e volumes do algoritmo (com cache por luz/config)
         ts = time.perf_counter()
-        batches = []
-        occluder_cache = []
-        for prop in self.scene:
-            if not prop.occluder:
-                continue
-            pw, _ = self._world(prop)
-            if use_inf:
-                # Verifica se todos os raios extrudados apontam para o semiespaço frontal
-                # da câmera (w_clip > 0). Para triângulos da tampa traseira no infinito (w_e = 0),
-                # P_inf satisfaz z_clip = w_clip, logo o cruzamento com z_clip + w_clip = 0
-                # ocorre em w_clip = 0 (plano do olho), exigindo rasterização homogênea 4D sem
-                # divisão perspectiva. Quando algum raio aponta para trás (w_inf_clip <= 1e-3),
-                # ancora-se a extrusão em distância finita longa (length=500.0) sob P_inf.
-                d_world = pw - self.light[None, :]
-                d_h = np.concatenate([d_world, np.zeros((pw.shape[0], 1), dtype=F)], axis=1)
-                w_inf_clip = (vp @ d_h.T).T[:, 3]
-                if np.all(w_inf_clip > 1e-3):
-                    sides, front, back = sv.build_volume_homogeneous(
-                        pw, prop.solid.indices, prop.solid.dir_edges,
-                        prop.solid.edge_face, prop.solid.edge_opp,
-                        self.light, length=ext_len, infinite=True, caps=zfail)
+        cache_key = (
+            tuple(float(v) for v in self.light),
+            s.algorithm,
+            use_inf,
+            float(ext_len),
+            float(s.detail),
+            len(self.scene),
+            vp.tobytes() if use_inf else b"",
+        )
+        if self._vol_cache_key == cache_key and self._vol_cache_data is not None:
+            batches, occluder_cache = self._vol_cache_data
+        else:
+            batches = []
+            occluder_cache = []
+            for prop in self.scene:
+                if not prop.occluder:
+                    continue
+                pw, _ = self._world(prop)
+                if use_inf:
+                    # Verifica se todos os raios extrudados apontam para o semiespaço frontal
+                    # da câmera (w_clip > 0). Para triângulos da tampa traseira no infinito (w_e = 0),
+                    # P_inf satisfaz z_clip = w_clip, logo o cruzamento com z_clip + w_clip = 0
+                    # ocorre em w_clip = 0 (plano do olho), exigindo rasterização homogênea 4D sem
+                    # divisão perspectiva. Quando algum raio aponta para trás (w_inf_clip <= 1e-3),
+                    # ancora-se a extrusão em distância finita longa (length=500.0) sob P_inf.
+                    d_world = pw - self.light[None, :]
+                    d_h = np.concatenate([d_world, np.zeros((pw.shape[0], 1), dtype=F)], axis=1)
+                    w_inf_clip = (vp @ d_h.T).T[:, 3]
+                    if np.all(w_inf_clip > 1e-3):
+                        sides, front, back = sv.build_volume_homogeneous(
+                            pw, prop.solid.indices, prop.solid.dir_edges,
+                            prop.solid.edge_face, prop.solid.edge_opp,
+                            self.light, length=ext_len, infinite=True, caps=zfail)
+                    else:
+                        sides, front, back = sv.build_volume_homogeneous(
+                            pw, prop.solid.indices, prop.solid.dir_edges,
+                            prop.solid.edge_face, prop.solid.edge_opp,
+                            self.light, length=500.0, infinite=False, caps=zfail)
+                    occluder_cache.append((prop, pw, None))
                 else:
-                    sides, front, back = sv.build_volume_homogeneous(
+                    sides, front, back = sv.build_volume(
                         pw, prop.solid.indices, prop.solid.dir_edges,
                         prop.solid.edge_face, prop.solid.edge_opp,
-                        self.light, length=500.0, infinite=False, caps=zfail)
-                occluder_cache.append((prop, pw, None))
-            else:
-                sides, front, back = sv.build_volume(
-                    pw, prop.solid.indices, prop.solid.dir_edges,
-                    prop.solid.edge_face, prop.solid.edge_opp,
-                    self.light, ext_len, caps=zfail)
-                closed_fin = (sides, front, back) if zfail else None
-                occluder_cache.append((prop, pw, closed_fin))
-            if zfail:
-                parts = [x for x in (sides, front, back) if x.shape[0]]
-                if parts:
-                    batches.append(np.concatenate(parts, axis=0))
-            else:
-                if sides.shape[0]:
-                    batches.append(sides)
+                        self.light, ext_len, caps=zfail)
+                    closed_fin = (sides, front, back) if zfail else None
+                    occluder_cache.append((prop, pw, closed_fin))
+                if zfail:
+                    parts = [x for x in (sides, front, back) if x.shape[0]]
+                    if parts:
+                        batches.append(np.concatenate(parts, axis=0))
+                else:
+                    if sides.shape[0]:
+                        batches.append(sides)
+            self._vol_cache_key = cache_key
+            self._vol_cache_data = (batches, occluder_cache)
         st.ms_silhouette = (time.perf_counter() - ts) * 1000.0
 
         # 2b. Instrumentação observacional (volumes_with_camera)
@@ -594,7 +622,7 @@ class SVRenderer:
     def _raster_volume_tri(self, sx, sy, z, zfail: bool,
                            incr: str, decr: str, st: SVStats) -> None:
         s = self.settings
-        res = scan_triangle(sx, sy, s.width, s.height)
+        res = self._scan_fn(sx, sy, s.width, s.height)
         if res is None:
             return
         yy, xx, l0, l1, l2, area = res
@@ -802,3 +830,9 @@ class SVRenderer:
         """Atalho de conveniência para `evaluation.truth.evaluate_renderer_ground_truth`."""
         from ..evaluation.truth import evaluate_renderer_ground_truth
         return evaluate_renderer_ground_truth(self)
+
+
+class FastCPURenderer(SVRenderer):
+    """Backend CPU otimizado (`cpu-fast`) usando `scan_triangle_fast` (Numba se disponível)."""
+    backend_name: str = "cpu-fast"
+    _scan_fn = staticmethod(scan_triangle_fast)

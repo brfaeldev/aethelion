@@ -12,7 +12,9 @@ Modos:
 from __future__ import annotations
 
 import argparse
+import json
 
+from .core.backend import BACKENDS, PRESETS, apply_preset
 from .core.sv_renderer import SVSettings
 
 
@@ -39,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="usa passo temporal fixo por quadro em vez de relógio de parede")
     m.add_argument("--fixed-dt", type=float, default=0.5,
                    help="passo temporal fixo (s) quando --deterministic está ativo")
+    m.add_argument("--config", type=str, default=None,
+                   help="caminho de arquivo JSON com parâmetros de SVSettings")
+    m.add_argument("--preset", choices=list(PRESETS), default=None,
+                   help="perfil pronto de desempenho/qualidade")
+    m.add_argument("--backend", choices=list(BACKENDS), default=None,
+                   help="backend de renderização (padrão: cpu-sw)")
 
     w = p.add_argument_group("janela (visualizador)")
     w.add_argument("--fullscreen", action="store_true",
@@ -47,48 +55,107 @@ def build_parser() -> argparse.ArgumentParser:
                    help="largura inicial da janela em pixels")
     w.add_argument("--win-height", type=int, default=780,
                    help="altura inicial da janela em pixels")
+    w.add_argument("--display-filter", choices=["nearest", "bilinear"], default=None,
+                   help="filtro de escala na janela (padrão: nearest)")
 
     r = p.add_argument_group("renderizador (resolução interna e parâmetros)")
-    r.add_argument("--width", type=int, default=256,
-                   help="largura interna do framebuffer renderizado")
-    r.add_argument("--height", type=int, default=192,
-                   help="altura interna do framebuffer renderizado")
-    r.add_argument("--detail", type=float, default=1.0,
-                   help="densidade das malhas da cripta")
+    r.add_argument("--width", type=int, default=None,
+                   help="largura interna do framebuffer renderizado (padrão: 256)")
+    r.add_argument("--height", type=int, default=None,
+                   help="altura interna do framebuffer renderizado (padrão: 192)")
+    r.add_argument("--detail", type=float, default=None,
+                   help="densidade das malhas da cripta (padrão: 1.0)")
     r.add_argument("--algorithm", choices=["none", "zpass", "zfail"],
-                   default="zfail")
-    r.add_argument("--stencil-bits", type=int, default=8, choices=[1, 2, 3, 4, 5, 8])
-    r.add_argument("--no-wrap", action="store_true",
+                   default=None, help="algoritmo de sombra (padrão: zfail)")
+    r.add_argument("--stencil-bits", type=int, default=None,
+                   choices=[1, 2, 3, 4, 5, 8],
+                   help="largura do buffer de stencil em bits (padrão: 8)")
+    r.add_argument("--no-wrap", action="store_true", default=None,
                    help="usa INCR/DECR saturados em vez de INCR_WRAP/DECR_WRAP")
-    r.add_argument("--depth-bits", type=int, default=0,
+    r.add_argument("--depth-bits", type=int, default=None,
                    help="0 = float32; senão largura do buffer de profundidade por fragmento")
-    r.add_argument("--extrude-len", type=float, default=40.0)
-    r.add_argument("--infinite-extrude", action="store_true",
-                   help="usa matriz P_inf e extrusão homogênea no infinito (w=0, Everitt & Kilgard)")
-    r.add_argument("--no-depth-clamp", action="store_true",
+    r.add_argument("--extrude-len", type=float, default=None,
+                   help="comprimento da extrusão finita (padrão: 40.0)")
+    r.add_argument("--infinite-extrude", action="store_true", default=None,
+                   help="usa matriz P_inf e extrusão homogênea no infinito (w=0)")
+    r.add_argument("--no-depth-clamp", action="store_true", default=None,
                    help="desativa depth clamping no plano distante em z-fail")
+    r.add_argument("--fov", type=float, default=None,
+                   help="campo de visão vertical em graus (padrão: 62.0)")
+    r.add_argument("--near", type=float, default=None,
+                   help="plano próximo da câmera (padrão: 0.15)")
+    r.add_argument("--far", type=float, default=None,
+                   help="plano distante da câmera (padrão: 60.0)")
     r.add_argument("--precision",
                    choices=["float32", "float16", "fixed16_16", "fixed12_4"],
-                   default="float32")
+                   default=None, help="precisão numérica (padrão: float32)")
+    r.add_argument("--vertex-snap", type=int, default=None,
+                   help="grade de snap de vértices estilo PS1 (0 = desativado)")
     r.add_argument("--shading", choices=["gouraud", "flat", "unlit"],
-                   default="gouraud")
-    r.add_argument("--color-bits", type=int, default=8,
-                   choices=[8, 5, 4, 3, 2, 1])
-    r.add_argument("--dither", action="store_true")
-    r.add_argument("--no-texture", action="store_true")
+                   default=None, help="modelo de sombreamento (padrão: gouraud)")
+    r.add_argument("--ambient", type=float, default=None,
+                   help="intensidade da luz ambiente 0..1 (padrão: 0.17)")
+    r.add_argument("--color-bits", type=int, default=None,
+                   choices=[8, 5, 4, 3, 2, 1],
+                   help="profundidade de cor por canal (padrão: 8)")
+    r.add_argument("--dither", action="store_true", default=None,
+                   help="ativa dithering ordenado Bayer 4x4")
+    r.add_argument("--no-texture", action="store_true", default=None,
+                   help="desativa texturas")
+    r.add_argument("--texture-res", type=int, default=None,
+                   help="resolução das texturas procedurais (padrão: 64)")
+    r.add_argument("--texture-filter", choices=["nearest", "bilinear"],
+                   default=None, help="filtro de amostragem de textura (padrão: nearest)")
     return p
 
 
 def settings_from(a) -> SVSettings:
-    return SVSettings(
-        width=a.width, height=a.height, detail=a.detail,
-        algorithm=a.algorithm, stencil_bits=a.stencil_bits,
-        stencil_wrap=not a.no_wrap, depth_bits=a.depth_bits,
-        extrude_len=a.extrude_len, infinite_extrude=a.infinite_extrude,
-        depth_clamp=not a.no_depth_clamp, precision=a.precision,
-        shading=a.shading, color_bits=a.color_bits, dither=a.dither,
-        textured=not a.no_texture,
-    )
+    if getattr(a, "config", None):
+        with open(a.config, "r", encoding="utf-8") as f:
+            s = SVSettings.from_dict(json.load(f))
+    else:
+        s = SVSettings()
+
+    if getattr(a, "preset", None):
+        apply_preset(s, a.preset)
+
+    direct_map = {
+        "backend": "backend",
+        "display_filter": "display_filter",
+        "width": "width",
+        "height": "height",
+        "detail": "detail",
+        "algorithm": "algorithm",
+        "stencil_bits": "stencil_bits",
+        "depth_bits": "depth_bits",
+        "extrude_len": "extrude_len",
+        "fov": "fov",
+        "near": "near",
+        "far": "far",
+        "precision": "precision",
+        "vertex_snap": "vertex_snap",
+        "shading": "shading",
+        "ambient": "ambient",
+        "color_bits": "color_bits",
+        "texture_res": "texture_res",
+        "texture_filter": "texture_filter",
+    }
+    for arg_k, attr_k in direct_map.items():
+        val = getattr(a, arg_k, None)
+        if val is not None:
+            setattr(s, attr_k, val)
+
+    if getattr(a, "no_wrap", None):
+        s.stencil_wrap = False
+    if getattr(a, "infinite_extrude", None):
+        s.infinite_extrude = True
+    if getattr(a, "no_depth_clamp", None):
+        s.depth_clamp = False
+    if getattr(a, "dither", None):
+        s.dither = True
+    if getattr(a, "no_texture", None):
+        s.textured = False
+    return s
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -127,4 +194,5 @@ def main(argv: list[str] | None = None) -> int:
     return run_viewer(settings_from(args), args.outdir,
                       deterministic=args.deterministic,
                       win_width=args.win_width, win_height=args.win_height,
-                      fullscreen=args.fullscreen)
+                      fullscreen=args.fullscreen,
+                      config_path=args.config)

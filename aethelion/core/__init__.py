@@ -25,7 +25,15 @@ from .shadow import (
     face_facing,
     point_in_volume,
 )
-from .sv_renderer import BACKEND, SVRenderer, SVSettings, SVStats
+from .sv_renderer import BACKEND, FastCPURenderer, SVRenderer, SVSettings, SVStats
+from .backend import (
+    BACKENDS,
+    PRESETS,
+    RendererProtocol,
+    apply_preset,
+    available_backends,
+    create_renderer,
+)
 
 __all__ = [
     "F",
@@ -58,7 +66,14 @@ __all__ = [
     "extract_silhouette_segments",
     "point_in_volume",
     "BACKEND",
+    "BACKENDS",
+    "PRESETS",
+    "RendererProtocol",
+    "available_backends",
+    "apply_preset",
+    "create_renderer",
     "SVSettings",
     "SVStats",
     "SVRenderer",
+    "FastCPURenderer",
 ]

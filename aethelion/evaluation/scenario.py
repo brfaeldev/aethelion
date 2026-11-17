@@ -17,6 +17,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from ..core.backend import create_renderer
 from ..core.sv_renderer import BACKEND, SVRenderer, SVSettings
 from .truth import Agreement, compare_masks, diff_image, evaluate_renderer_ground_truth
 
@@ -218,7 +219,8 @@ class ExperimentRunner:
         self._next_measure = 0.0
         self._shot_done.clear()
         modo_relogio = f"deterministico(dt={self.fixed_dt}s)" if self.deterministic else "parede"
-        self.log(f"INICIO backend={BACKEND} resolucao="
+        backend_id = getattr(self.r, "backend_name", BACKEND)
+        self.log(f"INICIO backend={backend_id} resolucao="
                  f"{self.r.settings.width}x{self.r.settings.height} "
                  f"duracao_prevista={self.total_duration:.0f}s relogio={modo_relogio}")
         self._apply_phase()
@@ -300,7 +302,7 @@ class ExperimentRunner:
         row = {f: "" for f in CSV_FIELDS}
         row.update({
             "t_wall": round(elapsed, 3), "fase": p.key, "hipotese": p.hipotese,
-            "frame": self.frame, "backend": BACKEND, "origem_config": self.origem,
+            "frame": self.frame, "backend": getattr(self.r, "backend_name", BACKEND), "origem_config": self.origem,
             "algoritmo": s.algorithm, "stencil_bits": s.stencil_bits,
             "stencil_wrap": int(s.stencil_wrap), "extrude_len": s.extrude_len,
             "infinite_extrude": int(s.infinite_extrude),
@@ -395,7 +397,7 @@ class ExperimentRunner:
             if not sel:
                 continue
             rec = {"fase": p.key, "titulo": p.titulo, "hipotese": p.hipotese,
-                   "backend": BACKEND, "quadros": len(sel),
+                   "backend": getattr(self.r, "backend_name", BACKEND), "quadros": len(sel),
                    "algoritmo": sel[0]["algoritmo"],
                    "stencil_bits": sel[0]["stencil_bits"],
                    "stencil_wrap": sel[0]["stencil_wrap"],
@@ -431,7 +433,7 @@ def run_headless(settings: SVSettings, outdir: str = "results",
                  measure_every: float = 2.5,
                  deterministic: bool = False,
                  fixed_dt: float = 0.5) -> ExperimentRunner:
-    r = SVRenderer(settings)
+    r = create_renderer(settings.backend, settings)
     run = ExperimentRunner(r, outdir, measure_every,
                            deterministic=deterministic, fixed_dt=fixed_dt)
     run.start()
@@ -444,7 +446,7 @@ def run_headless(settings: SVSettings, outdir: str = "results",
 # Varreduras complementares (Etapa 4: Resolução, Complexidade e Extrusão P_inf)
 # --------------------------------------------------------------------------- #
 def _eval_sv_config(s: SVSettings, label: str, frames: int = 5) -> dict:
-    r = SVRenderer(s)
+    r = create_renderer(s.backend, s)
     r.capture_gbuffer = True
     ms_list, fps_list, f1_list, prec_list, rec_list = [], [], [], [], []
     for i in range(frames):
