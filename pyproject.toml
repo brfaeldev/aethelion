@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aethelion"
+version = "2.1.0"
+description = "Estudo experimental de sombras volumétricas por stencil (Eixo 7 — Arquitetura de Consoles Antigos)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.21",
+    "pillow>=9.0",
+    "matplotlib>=3.5",
+    "pygame-ce>=2.4",
+]
+
+[project.optional-dependencies]
+gpu = ["moderngl>=5.8"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+aethelion = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

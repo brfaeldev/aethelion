@@ -1,126 +1,157 @@
-# Metodologia
+# Metodologia Experimental e Modelagem Matemática
 
 ## 1. Objetivo
 
 Medir como **recursos e limites da arquitetura de rasterização** afetam a
 geração de sombras volumétricas por stencil, em termos de **robustez**,
-**precisão geométrica** e **custo computacional**.
+**precisão geométrica**, **consumo de memória** e **custo computacional**.
 
-O objeto de estudo não é a cena. A cena é o banco de ensaio.
+O objeto de estudo não é a cena. A cena procedural (cripta *two-manifold*) é o
+banco de ensaio de pior caso.
 
 ## 2. Pergunta de pesquisa
 
 > Como a arquitetura do buffer (largura do stencil, disponibilidade de
-> operações de transbordo circular, largura do buffer de profundidade) e a
-> variante do algoritmo (z-pass versus z-fail) afetam a robustez, a precisão
-> geométrica e o custo computacional da geração de sombras volumétricas?
+> operações de transbordo circular `INCR_WRAP`/`DECR_WRAP`, largura do buffer
+> de profundidade quantizada por fragmento) e a variante do algoritmo (`z-pass`
+> versus `z-fail` com extrusão finita ou homogênea no infinito $P_{\text{inf}}$)
+> afetam a robustez, a precisão geométrica, o consumo de memória e o custo
+> computacional da geração de sombras volumétricas?
 
 ## 3. Hipóteses
 
 | # | Hipótese | Fase |
 |---|---|---|
-| H1 | z-pass e z-fail concordam enquanto a câmera está fora de todos os volumes; a divergência acompanha o número de volumes que contêm a câmera | C vs D |
-| H2 | z-fail custa sistematicamente mais que z-pass, por processar e preencher as tampas frontal e traseira | A vs B |
+| H1 | `z-pass` e `z-fail` concordam enquanto a câmera está fora de todos os volumes; a divergência acompanha o número de volumes que contêm a câmera | C vs D |
+| H2 | `z-fail` custa sistematicamente mais que `z-pass`, por construir e rasterizar as tampas frontal e traseira do volume fechado | A vs B |
 | H3 | Sem operações de transbordo circular, a saturação de um contador estreito produz sombra incorreta; com `INCR_WRAP`/`DECR_WRAP`, o erro desaparece na mesma cena | E vs F |
-| H4 | Reduzir a largura do buffer de profundidade degrada a máscara de sombra de forma distinta da degradação da visibilidade | G vs B |
-| H5 | Extrusão finita insuficiente trunca o volume e reduz a revocação sem afetar a precisão na mesma proporção | H vs B |
+| H4 | Reduzir a largura do buffer de profundidade (quantizado por fragmento) degrada a máscara de sombra em vistas rasantes | G vs B |
+| H5 | Extrusão finita insuficiente trunca o volume e reduz a revocação, enquanto a extrusão suficiente ou homogênea no infinito ($P_{\text{inf}}, w=0$) preserva o volume | H vs B |
 
-## 4. Enquadramento no Eixo 7 — Arquitetura de Consoles Antigos
+## 4. Modelagem Matemática do Pipeline e dos Volumes de Sombra
 
-O eixo trata de como **recursos e limitações do pipeline gráfico** condicionam a
-renderização. Sombras volumétricas por stencil são o caso didático exato disso,
-porque o algoritmo **não funciona** sem um conjunto específico de recursos de
-arquitetura:
+### 4.1 Detecção de Silhueta e Extrusão Homogênea (Everitt & Kilgard, 2002)
 
-* **Buffer de stencil, e sua largura.** O algoritmo é um contador por pixel. Um
-  contador estreito satura e a sombra sai errada. Essa é uma limitação de
-  **memória por pixel**, não de aritmética — exatamente o tipo de restrição que
-  caracteriza hardware de gerações anteriores.
-* **Operações de transbordo circular.** `INCR_WRAP` e `DECR_WRAP` foram
-  promovidas ao núcleo do OpenGL em 1.4; antes disso eram extensão. Um programa
-  escrito contra uma implementação sem elas precisa de outra estratégia. A
-  disponibilidade de uma operação é um fato de arquitetura, e aqui ela é medida.
-* **Buffer de profundidade.** Tanto a existência quanto a largura. Z-fail
-  depende de testar profundidade na direção contrária, e a resolução do buffer
-  determina onde a sombra começa a falhar.
-* **Recorte no plano próximo.** É a razão de z-fail existir: z-pass quebra
-  quando o volume é recortado pelo plano próximo da câmera.
-* **Taxa de preenchimento.** Volumes de sombra são enormes em área de tela.
+Seja uma malha fechada (*2-manifold*) e uma fonte de luz pontual em coordenadas
+homogêneas $L = \langle L_x, L_y, L_z, 1 \rangle$. Uma face triangular com normal
+externa $\mathbf{n}_f$ e baricentro $\mathbf{c}_f$ está voltada para a luz quando:
 
-A comparação entre as duas variantes, instrumentada, é portanto uma investigação
-sobre **arquitetura**, e não sobre estética.
+$$\mathbf{n}_f \cdot (\mathbf{L} - \mathbf{c}_f) > 0$$
 
-## 5. Instrumento e sua validação
+Uma aresta orientada $(v_a, v_b)$ compartilhada pelas faces adjacentes $f_1$ e
+$f_2$ pertence ao contorno de silhueta se e somente se $f_1$ está voltada para a
+luz e $f_2$ não está.
 
-O rasterizador é inteiramente por software. Antes de ser usado como instrumento
-de medida, ele é submetido a uma **suíte de conformidade** que verifica o
-subconjunto de comportamento especificado em OpenGL 1.4 para o estágio de
-stencil, mais a regra de preenchimento de triângulos e o recorte no plano
-próximo. O resultado é gravado em `conformidade.csv`.
+Para fechar o volume de sombra de forma robusta no infinito (Everitt & Kilgard,
+2002, Seção 4.2), cada vértice $V = \langle V_x, V_y, V_z, 1 \rangle$ das faces
+voltadas para a luz é extrudado na direção oposta à luz como um ponto direcional
+no infinito com coordenada homogênea $w = 0$:
 
-A regra de preenchimento é verificada explicitamente porque dupla cobertura de
-uma aresta compartilhada incrementaria o contador de stencil duas vezes, criando
-sombra espúria: é um defeito do instrumento que se disfarçaria de resultado.
+$$V_\infty = \langle V_x - L_x, \; V_y - L_y, \; V_z - L_z, \; 0 \rangle$$
 
-## 6. Verdade de referência
+Para comparação experimental com a aproximação finita de Carmack (Fase H), o
+sistema também modela a extrusão finita por distância $L_{\text{ext}}$:
 
-A referência é obtida por **ray casting**: para cada pixel visível, um raio é
-lançado do ponto de superfície até a fonte de luz e testado contra a geometria
-oclusora. É independente do algoritmo em avaliação, o que é a condição para que
-precisão, revocação e F1 signifiquem alguma coisa.
+$$V_{\text{fin}} = \left\langle \mathbf{V} + L_{\text{ext}} \frac{\mathbf{V} - \mathbf{L}}{\|\mathbf{V} - \mathbf{L}\|}, \; 1 \right\rangle$$
 
-Por custo, a referência é amostrada periodicamente (padrão: a cada 2,5 s), não
-em todos os quadros. Isso está declarado e os quadros medidos são marcados na
-coluna `medido` do CSV.
+### 4.2 Matriz de Perspectiva Finita vs. Infinita ($P_{\text{inf}}$)
 
-## 7. Indicadores
+Quando vértices no infinito ($w = 0$) são projetados, a matriz de perspectiva
+clássica com plano distante finito `far` descartaria a tampa traseira. Tomando o
+limite $\text{far} \to \infty$ com folga numérica $\epsilon$ (Everitt & Kilgard,
+2002, Seção 3.2), obtém-se:
+
+$$P_{\text{inf}} = \begin{bmatrix} \frac{\cot(\text{fovy}/2)}{\text{aspect}} & 0 & 0 & 0 \\ 0 & \cot(\text{fovy}/2) & 0 & 0 \\ 0 & 0 & \epsilon - 1 & (\epsilon - 2)\,\text{near} \\ 0 & 0 & -1 & 0 \end{bmatrix}$$
+
+Complementarmente, o rasterizador implementa *depth clamping* (`NV_depth_clamp`),
+saturando $z_{\text{ndc}} \leftarrow \min(z_{\text{ndc}}, 1)$ nos fragmentos de
+volumes de sombra em `z-fail`.
+
+### 4.3 Regra de Preenchimento Exclusiva (Top-Left Orientada)
+
+Para evitar dupla contagem ou furos em arestas compartilhadas entre triângulos do
+volume de sombra, as três funções de aresta orientadas pelo sinal da área
+$s = \text{sign}(A)$ são avaliadas diretamente:
+
+$$e_i(p_x, p_y) = s \cdot \det\begin{bmatrix} x_{j} - p_x & x_{k} - p_x \\ y_{j} - p_y & y_{k} - p_y \end{bmatrix}$$
+
+Um centro de pixel $(p_x, p_y)$ pertence ao triângulo se, para $i \in \{0, 1, 2\}$:
+
+$$(e_i > 0) \;\lor\; \bigl(e_i = 0 \;\land\; \text{TopLeft}(s\,\Delta x_i, s\,\Delta y_i)\bigr)$$
+
+onde $\text{TopLeft}(dx, dy) \iff (dy < 0) \lor (dy = 0 \land dx > 0)$.
+
+### 4.4 Operações de Stencil de $b$ Bits e Quantização de Profundidade por Fragmento
+
+Para um buffer de stencil de $b \in [1, 8]$ bits com valor máximo $M = 2^b - 1$:
+
+$$\text{INCR}(s) = \min(s + 1, M), \qquad \text{DECR}(s) = \max(s - 1, 0)$$
+
+$$\text{INCR\_WRAP}(s) = (s + 1) \bmod (M + 1), \qquad \text{DECR\_WRAP}(s) = (s - 1) \bmod (M + 1)$$
+
+Para um Z-buffer de $D$ bits, cada fragmento interpolado $z_{\text{ndc}} \in [-1, 1]$
+é quantizado antes do teste de profundidade:
+
+$$z_q = \frac{2}{2^D - 1}\,\text{round}\!\left(\frac{z_{\text{ndc}} + 1}{2}\,(2^D - 1)\right) - 1$$
+
+## 5. Enquadramento no Eixo 7 — Arquitetura de Consoles Antigos
+
+O eixo investiga como **recursos e limitações do pipeline gráfico** condicionam a
+renderização. Sombras volumétricas por stencil exigem um conjunto específico de
+recursos arquiteturais:
+
+* **Buffer de stencil e sua largura ($1\dots 8$ bits)**: contadores estreitos
+  saturam sob alta sobreposição de volumes (limitação de memória por pixel).
+* **Operações de transbordo circular (`INCR_WRAP`/`DECR_WRAP`)**: promovidas de
+  `EXT_stencil_wrap` ao núcleo na especificação **OpenGL 1.4** (Segal & Akeley,
+  2002).
+* **Buffer de profundidade por fragmento**: determina a precisão da passagem de
+  geometria e da inversão do teste de profundidade em `z-fail`.
+* **Recorte no plano próximo e distante**: razão da transição de `z-pass` para
+  `z-fail` com $P_{\text{inf}}$ / *depth clamping*.
+* **Taxa de preenchimento (*fill rate*)**: os quadriláteros extrudados dominam o
+  número de fragmentos processados (`frag_stencil`).
+
+## 6. Instrumento, Validação e Verdade de Referência
+
+1. **Validação de Conformidade (`conformance.py`)**: 24 testes automatizados
+   verificam todas as funções, operações, máscaras e ordens de teste da Seção
+   4.1.5 da especificação OpenGL 1.4 (Segal & Akeley, 2002), a regra top-left sem
+   furos ou dupla cobertura e o recorte homogêneo no plano próximo.
+2. **Verdade de Referência por Ray Casting (`truth.py`)**: lança raios de sombra
+   (Möller-Trumbore) de cada pixel visível até a luz pontual e computa Precisão,
+   Revocação, F1-Score e Taxa de Erro. O tempo de CPU gasto no ray casting é
+   isolado e descontado dos cronômetros do experimento.
+
+## 7. Indicadores e Perfilamento
 
 | Indicador | O que revela |
 |---|---|
-| `ms_geometry`, `ms_silhouette`, `ms_stencil` | onde o custo está, por etapa |
-| `tris_volume`, `tris_volume_drawn` | carga geométrica do algoritmo |
-| `frag_stencil` | carga de preenchimento (o gargalo clássico) |
-| `pixels_shadow` / `pixels_visible` | extensão da região sombreada |
-| `precision`, `recall`, `f1`, `error_rate` | concordância com a referência |
-| `volumes_with_camera` | variável explicativa de H1 |
-| `stencil_saturation`, `stencil_wrap_events`, `stencil_max` | H3 |
-| `backend`, e a configuração completa | rastreabilidade de cada medição |
+| `ms_geometry`, `ms_silhouette`, `ms_stencil` | custo por estágio do pipeline (mediana e IQR) |
+| `tris_volume`, `tris_volume_drawn` | carga geométrica gerada pelas silhuetas e tampas |
+| `frag_stencil` | carga de preenchimento (*fill rate*) no estágio de stencil |
+| `mem_buffers_kb`, `mem_geometry_kb`, `mem_total_kb` | perfilamento de memória dos buffers por pixel e malhas |
+| `precision`, `recall`, `f1`, `error_rate` | concordância objetiva contra o ray casting (média e DP) |
+| `volumes_with_camera` | variável explicativa de H1 (medida fora do cronômetro) |
+| `stencil_saturation`, `stencil_wrap_events`, `stencil_max` | contadores de saturação vs. aritmética modular (H3) |
 
-## 8. Procedimento
+## 8. Referências
 
-1. Suíte de conformidade.
-2. Roteiro de 8 fases, 12 s cada (96 s), com trajetória de câmera determinística
-   por fase. Cada fase isola uma hipótese.
-3. Registro de todos os quadros em `experimento.csv`; agregação por fase em
-   `resumo.csv`; eventos em `eventos.log`.
-4. Alterações manuais durante a execução são permitidas e registradas como
-   eventos, com as linhas afetadas marcadas como `origem_config=manual`.
-5. Geração automática de gráficos e de `RELATORIO.md`.
-
-## 9. Ameaças à validade, declaradas
-
-1. **Backend.** Todos os tempos vêm do rasterizador em software (`cpu-sw`).
-   Não descrevem hardware real. Apenas tendências relativas entre fases são
-   válidas. O backend é registrado em cada linha dos CSVs.
-2. **Extrusão finita.** Os volumes são extrudados por um comprimento finito e
-   configurável, não infinito com plano distante no infinito. É um desvio em
-   relação à formulação robusta, e por isso é tratado como **fator
-   experimental** (fase H), não como aproximação silenciosa.
-3. **Ambiente de medição.** Concorrência de CPU introduz ruído. Fases curtas
-   reduzem, mas não eliminam, o efeito.
-4. **Modelo de luz.** Fonte pontual, oclusão binária. Não há penumbra.
-
-## 10. Referências
-
-1. C. Everitt, M. J. Kilgard. "Practical and Robust Stenciled Shadow Volumes for
-   Hardware-Accelerated Rendering." 2002. https://arxiv.org/abs/cs/0301002
-   — origem das variantes z-pass e z-fail, do tratamento de tampas, do problema
-   do plano próximo e da necessidade de operações de transbordo circular.
-2. WSCG 2003, "An online system which approved OpenGL 1.4 standard."
-   http://wscg.zcu.cz/WSCG2003/Papers_2003/D19.pdf
-   — prática de validação por conjunto de testes de conformidade, adotada aqui
-   para validar o rasterizador antes de usá-lo como instrumento de medida.
-3. T. Akenine-Möller, E. Haines, N. Hoffman. *Real-Time Rendering*, 4ª ed.,
-   CRC Press, 2018. — organização do pipeline e rasterização.
-4. J. F. Blinn. "A Trip Down the Graphics Pipeline: The Homogeneous Perspective
-   Transform." *IEEE CG&A*, 13(3):75–80, 1993. — transformação de perspectiva.
+1. C. Everitt, M. J. Kilgard. *"Practical and Robust Stenciled Shadow Volumes for
+   Hardware-Accelerated Rendering."* NVIDIA Corporation, 2002.
+   https://arxiv.org/abs/cs/0301002 — formulação das variantes `z-pass` e
+   `z-fail`, necessidade das tampas frontal/traseira, matriz $P_{\text{inf}}$ com
+   extrusão homogênea ($w=0$), *depth clamping* e uso de `INCR_WRAP`/`DECR_WRAP`.
+2. M. Segal, K. Akeley. *"The OpenGL Graphics System: A Specification (Version
+   1.4)."* Silicon Graphics, Inc., 2002 — especificação normativa do estágio de
+   stencil (Seção 4.1.5), promoção das operações `INCR_WRAP` e `DECR_WRAP` ao
+   núcleo do OpenGL 1.4 e regras de rasterização de polígonos (Seção 3.5).
+3. M. Li, M. Magnor, H.-P. Seidel. *"Online Accelerated Rendering of Visual Hulls
+   in Real Scenes."* WSCG 2003 (`D19.pdf`), pp. 290–297, 2003 — extração de
+   cones de silhueta, acumulação multi-passagem no buffer de stencil, uso de
+   recursos recém-aprovados do padrão OpenGL 1.4 para redução de passagens e
+   aplicação de *polygon offset* contra artefatos de precisão em bordas.
+4. T. Akenine-Möller, E. Haines, N. Hoffman. *Real-Time Rendering*, 4ª ed.,
+   CRC Press, 2018 — organização do pipeline e rasterização por funções de aresta.
+5. J. F. Blinn. *"A Trip Down the Graphics Pipeline: The Homogeneous Perspective
+   Transform."* *IEEE CG&A*, 13(3):75–80, 1993 — transformação homogênea e recorte.

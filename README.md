@@ -6,8 +6,9 @@ um rasterizador próprio, inteiramente por software.
 
 Eixo 7 — Arquitetura de Consoles Antigos.
 
-A pergunta, as hipóteses, o enquadramento no eixo e as limitações declaradas
-estão em [`METODOLOGIA.md`](METODOLOGIA.md).
+A pergunta de pesquisa, a modelagem matemática ($P_{\text{inf}}$, extrusão
+homogênea $w=0$, regra *top-left*), as hipóteses H1–H5 e as referências estão em
+[`METODOLOGIA.md`](METODOLOGIA.md).
 
 ---
 
@@ -20,38 +21,45 @@ pip install -r requirements.txt
 ## Execução
 
 ```bash
-python main.py                  # tela única: cena, HUD e barra de estado
-python main.py --experiment     # roteiro completo sem janela + relatório
-python main.py --conformance    # apenas a suíte de conformidade
-python main.py --report         # gráficos e RELATORIO.md a partir dos CSVs
-python main.py --legacy-sweeps  # varreduras retrô do estudo anterior
+python main.py                                  # tela única: cena, volumes 3D, HUD e barra de estado
+python main.py --experiment                     # conformidade + 8 fases + varreduras + relatório
+python main.py --experiment --deterministic     # execução determinística por quadro (reprodutível)
+python main.py --conformance                    # apenas a suíte de conformidade (24 testes)
+python main.py --sv-sweeps                      # varreduras de resolução, complexidade e P_inf
+python main.py --report                         # gráficos e RELATORIO.md a partir dos CSVs
+python main.py --legacy-sweeps                  # varreduras retrô do estudo anterior (v1)
+pytest                                          # suíte completa de testes unitários e conformidade
 ```
 
-Na janela, **ESPAÇO** inicia o roteiro de 96 s. Durante a execução é possível
-alterar qualquer parâmetro: cada alteração vira um evento em `eventos.log` e
-marca as linhas seguintes como `origem_config=manual`.
+Na janela interativa, **ESPAÇO** inicia o roteiro de 96 s. Durante a execução é
+possível alterar qualquer parâmetro: cada alteração vira um evento em
+`eventos.log` e marca as linhas seguintes como `origem_config=manual`.
 
-### Teclas
+### Teclas no Visualizador Interativo
 
 | Tecla | Ação |
 |---|---|
 | `ESPAÇO` | iniciar / parar o experimento |
-| `1` / `2` / `0` | z-pass / z-fail / sem sombra |
+| `1` / `2` / `0` | `z-pass` / `z-fail` / sem sombra |
 | `W` | alterna `INCR_WRAP` / `INCR` |
 | `B` | largura do stencil (8, 5, 4, 3, 2, 1 bits) |
-| `D` | largura do z-buffer (float32, 24, 16, 12, 10) |
-| `P` | precisão numérica |
-| `E` | comprimento de extrusão |
+| `D` | largura do z-buffer por fragmento (float32, 24, 16, 12, 10) |
+| `P` | precisão numérica (`float32`, `float16`, `fixed16_16`, `fixed12_4`) |
+| `E` | comprimento de extrusão finita |
+| `I` | alterna extrusão homogênea no infinito ($P_{\text{inf}}, w=0$) |
 | `R` | resolução interna |
-| `V` | vista: cena / stencil / diferença contra a referência |
+| `V` | alterna vista: **cena** / **volumes 3D + silhuetas** / **stencil** / **diferença (ray cast)** |
 | `G` | medir agora contra o ray casting |
 | `C` | rodar a suíte de conformidade |
 | `S` | captura PNG |
-| setas | orbitar (fora do roteiro) |
+| setas | orbitar câmera (fora do roteiro) |
 | `ESC` | sair |
 
-Na vista de diferença: **verde** = acerto, **vermelho** = falso positivo,
-**azul** = falso negativo.
+* Na vista **volumes 3D + silhuetas**: faces frontais dos volumes aparecem em
+  âmbar semitransparente, faces traseiras em azul-ciano e arestas de silhueta em
+  ciano brilhante (inspirado nas Figuras 2, 3 e 5 de Everitt & Kilgard, 2002).
+* Na vista **diferença**: **verde** = acerto, **vermelho** = falso positivo,
+  **azul** = falso negativo.
 
 ---
 
@@ -59,13 +67,14 @@ Na vista de diferença: **verde** = acerto, **vermelho** = falso positivo,
 
 | Arquivo | Conteúdo |
 |---|---|
-| `conformidade.csv` | PASS/FAIL por teste de conformidade |
-| `experimento.csv` | uma linha por quadro, com configuração completa |
-| `resumo.csv` | agregação por fase (mediana de tempos, média de métricas) |
+| `conformidade.csv` | PASS/FAIL por teste de conformidade (24/24) |
+| `experimento.csv` | uma linha por quadro, com tempos, memória (KB) e métricas |
+| `resumo.csv` | agregação por fase (mediana, IQR, média e desvio padrão) |
+| `varredura_sv_*.csv` | varreduras de resolução, complexidade geométrica e extrusão $P_{\text{inf}}$ |
 | `eventos.log` | início, transições de fase, overrides manuais, encerramento |
 | `fase_*.png` | captura do meio de cada fase |
-| `grafico_*.png` | custo por etapa, concordância, carga, saturação |
-| `RELATORIO.md` | relatório preenchido com os números medidos |
+| `grafico_*.png` | custo por etapa, concordância, carga, saturação e memória |
+| `RELATORIO.md` | relatório consolidado com tabelas, dispersão e veredictos |
 
 ---
 
@@ -73,65 +82,44 @@ Na vista de diferença: **verde** = acerto, **vermelho** = falso positivo,
 
 | Fase | Hipótese | O que isola |
 |---|---|---|
-| A | H2 | z-pass, câmera externa — linha de base |
-| B | H2 | z-fail, mesma trajetória — custo das tampas |
-| C | H1 | z-pass com a câmera atravessando volumes — artefato esperado |
-| D | H1 | z-fail na mesma trajetória — robustez esperada |
+| A | H2 | `z-pass`, câmera externa — linha de base |
+| B | H2 | `z-fail`, mesma trajetória — custo das tampas |
+| C | H1 | `z-pass` com a câmera atravessando volumes — artefato esperado |
+| D | H1 | `z-fail` na mesma trajetória — robustez esperada |
 | E | H3 | stencil de 3 bits **sem** wrap, zona de alta sobreposição |
 | F | H3 | stencil de 3 bits **com** wrap, mesma cena |
-| G | H4 | buffer de profundidade de 12 bits, vista rasante |
-| H | H5 | extrusão curta — volume truncado |
+| G | H4 | buffer de profundidade de 12 bits (por fragmento), vista rasante |
+| H | H5 | extrusão finita curta — volume truncado vs. extrusão robusta |
 
 ---
 
-## Desempenho esperado
+## Arquitetura do Pacote
 
-O rasterizador é por software, por decisão de projeto: o objetivo é
-**instrumentar** cada estágio, não atingir taxas altas. A 256×192 com a cripta
-em detalhe 1.0, espere da ordem de **1 a 3 quadros por segundo**. Isso não
-afeta o experimento, que é conduzido por **tempo de parede**: as fases duram o
-que foi especificado, com mais ou menos quadros amostrados.
-
-Para uma demonstração mais fluida:
-
-```bash
-python main.py --width 160 --height 120 --detail 0.5
-```
-
-Um achado do estudo anterior deste projeto era que o custo do pipeline era
-dominado pelo **custo por primitiva**, não pelo preenchimento. Shadow volumes
-invertem essa relação: compare `frag_stencil` com `tris_volume` nos CSVs.
-
----
-
-## Estrutura
-
-```
-main.py                   CLI
+```text
 aethelion/
-  raster.py               varredura com regra de preenchimento exclusiva
-  stencil.py              unidade de stencil (subconjunto OpenGL 1.4)
-  scene_crypt.py          cena de ensaio: malhas fechadas + topologia
-  shadow.py               silhueta, extrusão, tampas, ponto-em-volume
-  sv_renderer.py          renderizador: geometria, stencil, composição
-  truth.py                referência por ray casting e métricas
-  conformance.py          suíte de conformidade (24 testes)
-  scenario.py             roteiro de fases, logs e CSVs
-  report.py               gráficos e RELATORIO.md
-  viewer.py               aplicação de tela única (pygame)
-  mathutil.py             álgebra 4x4 e perspectiva
-  pipeline.py             pipeline retrô do estudo anterior
-  framebuffer.py          quantização, dithering, paleta
-  texture.py              texturas procedurais
-  geometry.py             primitivas do estudo anterior
-  gpu_pipeline.py         backend ModernGL do estudo anterior
-  experiments.py          varreduras retrô
+├── main.py                      # Ponto de entrada CLI
+├── pyproject.toml               # Metadados do pacote e configuração pytest
+├── METODOLOGIA.md               # Modelagem matemática e desenho experimental
+├── docs/                        # Diagnóstico, alinhamento acadêmico e artigos PDF
+├── tests/                       # Testes automatizados (pytest)
+└── aethelion/
+    ├── core/                    # Motor gráfico e estágios do pipeline
+    │   ├── mathutil.py          # Álgebra 4x4, perspectiva finita e P_inf
+    │   ├── precision.py         # Emulação de ponto fixo/flutuante e Z-buffer N bits
+    │   ├── clipping.py          # Recorte Sutherland-Hodgman no plano near
+    │   ├── raster.py            # Varredura com regra top-left orientada
+    │   ├── stencil.py           # Estágio de stencil OpenGL 1.4 (1..8 bits, wrap)
+    │   ├── shadow.py            # Silhueta, extrusão finita e homogênea (w=0)
+    │   ├── texture.py           # Texturas procedurais
+    │   └── sv_renderer.py       # Renderizador vetorizado + inspeção 3D + memória
+    ├── scenes/
+    │   └── scene_crypt.py       # Cripta procedural two-manifold e topologia
+    ├── evaluation/
+    │   ├── conformance.py       # Suíte de conformidade (24 testes)
+    │   ├── truth.py             # Referência por ray casting e métricas F1
+    │   ├── scenario.py          # Roteiro de 8 fases e varreduras paramétricas
+    │   └── report.py            # Gráficos e gerador de RELATORIO.md
+    ├── ui/
+    │   └── viewer.py            # Aplicação interativa Pygame
+    └── legacy/                  # Estudo anterior isolado (v1)
 ```
-
-## Trabalho futuro declarado
-
-O backend ModernGL existente (`gpu_pipeline.py`) ainda não implementa o caminho
-de stencil em hardware. Portá-lo permitiria contrastar o comportamento do
-algoritmo em uma implementação real de OpenGL com a emulação controlada feita
-aqui — inclusive verificando se as operações de transbordo circular se comportam
-conforme a especificação de 1.4 no driver em uso.
