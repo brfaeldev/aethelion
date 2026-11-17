@@ -61,15 +61,17 @@ def clip_near(poly_clip: np.ndarray, attrs: list[np.ndarray],
     cur_p = poly
     cur_a = [np.asarray(a, dtype=F) for a in attrs]
 
-    # 1. Semiespaço w >= eps
-    cur_p, cur_a = _clip_halfspace(cur_p, cur_a, cur_p[:, 3] - F(eps))
-    if cur_p is None:
-        return None, None
-
-    # 2. Plano próximo canônico z_clip + w_clip >= 0 (z_ndc >= -1)
+    # 1. Plano próximo canônico z_clip + w_clip >= 0 (z_ndc >= -1) antes de w >= eps,
+    #    evitando que arestas com w = 0 apontando para trás da câmera sejam pré-recortadas
+    #    em w = eps antes da interseção exata no plano próximo.
     if near_plane:
         cur_p, cur_a = _clip_halfspace(cur_p, cur_a, cur_p[:, 2] + cur_p[:, 3])
         if cur_p is None:
             return None, None
+
+    # 2. Semiespaço w >= eps
+    cur_p, cur_a = _clip_halfspace(cur_p, cur_a, cur_p[:, 3] - F(eps))
+    if cur_p is None:
+        return None, None
 
     return cur_p, cur_a

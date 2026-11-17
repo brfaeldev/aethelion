@@ -226,6 +226,8 @@ class Viewer:
             self._step_resolution(-1)
         elif k == pg.K_v:
             self.view_mode = (self.view_mode + 1) % 4
+            if self.view_mode == 3 and self.run.last_diff is None:
+                self._measure_now()
         elif k == pg.K_g:
             self._measure_now()
         elif k == pg.K_c:
@@ -296,6 +298,10 @@ class Viewer:
         size = (max(1, int(img.shape[1] * scale)), max(1, int(img.shape[0] * scale)))
         surf = pg.transform.scale(surf, size)
         self.screen.blit(surf, ((view_w - size[0]) // 2, (view_h - size[1]) // 2))
+        if self.view_mode == 3 and self.run.last_diff is None:
+            msg = "Pressione G para calcular a diferença contra ray casting"
+            lbl = self.font_b.render(msg, True, WARN, (18, 18, 24))
+            self.screen.blit(lbl, ((view_w - lbl.get_width()) // 2, 16))
 
     def _text(self, x, y, txt, color=FG, font=None, gap=2):
         f = font or self.font
@@ -403,6 +409,9 @@ class Viewer:
                    f"'{self.outdir}'. ESPAÇO reinicia. Gere o relatório com "
                    f"python main.py --report")
             color = ACC
+        elif self.view_mode == 3 and self.run.last_diff is None:
+            txt = "VISTA DE DIFERENÇA — Pressione G para calcular a diferença contra ray casting"
+            color = WARN
         else:
             modo_tela = "TELA CHEIA (ESC/F11 sai)" if self.fullscreen else "F11/F: Tela Cheia"
             txt = (f"PRONTO — ESPAÇO inicia ({self.run.total_duration:.0f}s, {len(PHASES)} fases) | "
