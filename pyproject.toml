@@ -17,6 +17,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+gpu = ["moderngl>=5.8"]
+fast = ["numba>=0.59"]
 
 [project.scripts]
 aethelion = "aethelion.cli:main"

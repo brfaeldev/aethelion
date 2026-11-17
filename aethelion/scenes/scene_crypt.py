@@ -204,7 +204,7 @@ def torus_solid(seg_u: int = 16, seg_v: int = 9, r_major=0.5, r_minor=0.17) -> S
 # --------------------------------------------------------------------------- #
 def build_crypt(detail: float = 1.0) -> list[Prop]:
     """Monta a cripta. `detail` escala a densidade das malhas curvas."""
-    d = float(np.clip(detail, 0.35, 2.5))
+    d = float(np.clip(detail, 0.25, 4.0))
     seg = max(6, int(14 * d))
 
     col = cylinder(seg, radius=0.30, height=3.0)

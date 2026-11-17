@@ -144,16 +144,122 @@ def scan_triangle(sx, sy, width: int, height: int, min_area: float = 1e-9,
     e2 = (a2 * px)[None, :] + (b2 * py + c2)[:, None]
 
     m0 = (e0 >= 0.0) if tl0 else (e0 > 0.0)
-    m1 = (e1 >= 0.0) if tl1 else (e1 > 0.0)
-    m2 = (e2 >= 0.0) if tl2 else (e2 > 0.0)
-    mask = m0 & m1 & m2
-    if not mask.any():
+    m0 &= (e1 >= 0.0) if tl1 else (e1 > 0.0)
+    if not m0.any():
+        return None
+    m0 &= (e2 >= 0.0) if tl2 else (e2 > 0.0)
+    idx = np.flatnonzero(m0)
+    if idx.size == 0:
         return None
 
+    bw = x1 - x0 + 1
+    yy, xx = np.divmod(idx, bw)
     inv_abs = 1.0 / abs(area)
-    l0 = (e0[mask] * inv_abs).astype(F)
-    l1 = (e1[mask] * inv_abs).astype(F)
+    l0 = (e0.ravel()[idx] * inv_abs).astype(F)
+    l1 = (e1.ravel()[idx] * inv_abs).astype(F)
     l2 = F(1.0) - l0 - l1
 
-    yy, xx = np.nonzero(mask)
     return (yy + y0, xx + x0, l0, l1, l2, area)
+
+
+try:
+    from numba import njit as _njit
+    HAS_NUMBA = True
+except ImportError:  # pragma: no cover
+    _njit = None
+    HAS_NUMBA = False
+
+
+if HAS_NUMBA:  # pragma: no cover
+    @_njit(cache=True)
+    def _scan_numba(sx0: float, sy0: float, sx1: float, sy1: float,
+                    sx2: float, sy2: float, x0: int, x1: int, y0: int, y1: int,
+                    s: float, tl0: bool, tl1: bool, tl2: bool, inv_abs: float):
+        bw = x1 - x0 + 1
+        bh = y1 - y0 + 1
+        cap = bw * bh
+        yy = np.empty(cap, dtype=np.intp)
+        xx = np.empty(cap, dtype=np.intp)
+        l0 = np.empty(cap, dtype=np.float32)
+        l1 = np.empty(cap, dtype=np.float32)
+        l2 = np.empty(cap, dtype=np.float32)
+
+        a0 = (sy1 - sy2) * s
+        b0 = (sx2 - sx1) * s
+        c0 = (sx1 * sy2 - sx2 * sy1) * s
+        a1 = (sy2 - sy0) * s
+        b1 = (sx0 - sx2) * s
+        c1 = (sx2 * sy0 - sx0 * sy2) * s
+        a2 = (sy0 - sy1) * s
+        b2 = (sx1 - sx0) * s
+        c2 = (sx0 * sy1 - sx1 * sy0) * s
+
+        n = 0
+        for y in range(y0, y1 + 1):
+            py = y + 0.5
+            row0 = b0 * py + c0
+            row1 = b1 * py + c1
+            row2 = b2 * py + c2
+            for x in range(x0, x1 + 1):
+                px = x + 0.5
+                e0 = a0 * px + row0
+                if not (e0 >= 0.0 if tl0 else e0 > 0.0):
+                    continue
+                e1 = a1 * px + row1
+                if not (e1 >= 0.0 if tl1 else e1 > 0.0):
+                    continue
+                e2 = a2 * px + row2
+                if not (e2 >= 0.0 if tl2 else e2 > 0.0):
+                    continue
+                yy[n] = y
+                xx[n] = x
+                v0 = np.float32(e0 * inv_abs)
+                v1 = np.float32(e1 * inv_abs)
+                l0[n] = v0
+                l1[n] = v1
+                l2[n] = np.float32(1.0) - v0 - v1
+                n += 1
+        return yy[:n], xx[:n], l0[:n], l1[:n], l2[:n], n
+
+
+def scan_triangle_fast(sx, sy, width: int, height: int, min_area: float = 1e-9,
+                       cull_backface: bool = False):
+    """Variante acelerada de `scan_triangle` (usa Numba se disponível)."""
+    if not HAS_NUMBA:
+        return scan_triangle(sx, sy, width, height, min_area=min_area,
+                             cull_backface=cull_backface)
+    sx0, sx1, sx2 = float(sx[0]), float(sx[1]), float(sx[2])
+    sy0, sy1, sy2 = float(sy[0]), float(sy[1]), float(sy[2])
+    if not (math.isfinite(sx0) and math.isfinite(sx1) and math.isfinite(sx2)
+            and math.isfinite(sy0) and math.isfinite(sy1) and math.isfinite(sy2)):
+        return None
+    area = (sx1 - sx0) * (sy2 - sy0) - (sx2 - sx0) * (sy1 - sy0)
+    if not math.isfinite(area) or abs(area) < min_area:
+        return None
+    if cull_backface and area >= 0.0:
+        return None
+
+    min_x = min(sx0, sx1, sx2)
+    max_x = max(sx0, sx1, sx2)
+    min_y = min(sy0, sy1, sy2)
+    max_y = max(sy0, sy1, sy2)
+    x0 = max(0, int(math.ceil(min_x - 0.5)))
+    x1 = min(width - 1, int(math.floor(max_x - 0.5)))
+    if x0 > x1:
+        return None
+    y0 = max(0, int(math.ceil(min_y - 0.5)))
+    y1 = min(height - 1, int(math.floor(max_y - 0.5)))
+    if y0 > y1:
+        return None
+
+    s = 1.0 if area > 0.0 else -1.0
+    tl0 = _top_left((sx2 - sx1) * s, (sy2 - sy1) * s)
+    tl1 = _top_left((sx0 - sx2) * s, (sy0 - sy2) * s)
+    tl2 = _top_left((sx1 - sx0) * s, (sy1 - sy0) * s)
+    yy, xx, l0, l1, l2, n = _scan_numba(
+        sx0, sy0, sx1, sy1, sx2, sy2, x0, x1, y0, y1,
+        s, tl0, tl1, tl2, 1.0 / abs(area),
+    )
+    if n == 0:
+        return None
+    return (yy, xx, l0, l1, l2, area)
