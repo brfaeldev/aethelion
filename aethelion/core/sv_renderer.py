@@ -460,9 +460,11 @@ class SVRenderer:
             pw, _ = self._world(prop)
             if use_inf:
                 # Verifica se todos os raios extrudados apontam para o semiespaço frontal
-                # da câmera (w_clip > 0). Se algum raio apontar para trás da câmera
-                # (cruzando o plano near finito), ancora a extrusão na origem finita pw
-                # sob P_inf para que clip_near recorte em z_ndc = -1 (near) e não em +1 (far).
+                # da câmera (w_clip > 0). Para triângulos da tampa traseira no infinito (w_e = 0),
+                # P_inf satisfaz z_clip = w_clip, logo o cruzamento com z_clip + w_clip = 0
+                # ocorre em w_clip = 0 (plano do olho), exigindo rasterização homogênea 4D sem
+                # divisão perspectiva. Quando algum raio aponta para trás (w_inf_clip <= 1e-3),
+                # ancora-se a extrusão em distância finita longa (length=500.0) sob P_inf.
                 d_world = pw - self.light[None, :]
                 d_h = np.concatenate([d_world, np.zeros((pw.shape[0], 1), dtype=F)], axis=1)
                 w_inf_clip = (vp @ d_h.T).T[:, 3]

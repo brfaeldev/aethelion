@@ -121,11 +121,34 @@ class StencilBuffer:
         ANTES do teste de profundidade, e a operação aplicada depende das três
         combinações (sfail, dpfail, dppass).
         """
-        if len(yy) == 0:
+        n = len(yy)
+        if n == 0:
             return
-        s = self.buf[yy, xx]
-        self.fragments += int(s.size)
+        self.fragments += int(n)
+        wm = int(self.write_mask) & self.max_val
 
+        # Caminho rápido para shadow volumes (func == ALWAYS, escrita total no stencil)
+        if self.func == "ALWAYS" and wm == self.max_val:
+            if op_dppass == "KEEP" and op_dpfail != "KEEP":
+                mask = ~np.asarray(depth_pass, dtype=bool)
+                op = op_dpfail
+            elif op_dpfail == "KEEP" and op_dppass != "KEEP":
+                mask = np.asarray(depth_pass, dtype=bool)
+                op = op_dppass
+            else:
+                mask = None
+                op = "KEEP"
+
+            if mask is not None:
+                if not mask.any():
+                    return
+                my, mx = yy[mask], xx[mask]
+                sub = self.buf[my, mx]
+                self._count(op, sub)
+                self.buf[my, mx] = apply_op(op, sub, self.ref, self.max_val)
+                return
+
+        s = self.buf[yy, xx]
         s_pass = compare(self.func, self.ref, self.func_mask, s)
         dp = np.asarray(depth_pass, dtype=bool)
 
@@ -140,7 +163,6 @@ class StencilBuffer:
             self._count(op, sub)
             new[m] = apply_op(op, sub, self.ref, self.max_val)
 
-        wm = int(self.write_mask) & self.max_val
         self.buf[yy, xx] = (s & ~wm) | (new & wm)
 
     def _count(self, op: str, sub: np.ndarray) -> None:

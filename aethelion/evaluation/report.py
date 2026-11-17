@@ -123,6 +123,71 @@ def plots(outdir: str) -> list[str]:
         p = os.path.join(outdir, "grafico_memoria.png")
         fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
 
+    # 6. Varredura de resolução (latência/FPS e memória)
+    sw_res = _read(os.path.join(outdir, "varredura_sv_resolucao.csv"))
+    if sw_res:
+        xr = np.arange(len(sw_res))
+        rlbls = [r["variante"] for r in sw_res]
+        fig, ax1 = plt.subplots(figsize=(8.0, 3.8))
+        ax1.bar(xr - 0.18, [_num(r, "mediana_ms_total") for r in sw_res], 0.36,
+                label="tempo mediano (ms)", color="#4c78a8")
+        ax1.set_xticks(xr); ax1.set_xticklabels(rlbls, fontsize=8)
+        ax1.set_ylabel("tempo mediano por quadro (ms)")
+        ax2 = ax1.twinx()
+        ax2.plot(xr + 0.18, [_num(r, "mem_total_kb") for r in sw_res], "o-",
+                 label="memória total (KB)", color="#e45756")
+        ax2.set_ylabel("memória alocada (KB)")
+        ax1.set_title("Varredura de Resolução: Latência e Consumo de Memória")
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
+        fig.tight_layout()
+        p = os.path.join(outdir, "grafico_varredura_resolucao.png")
+        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
+
+    # 7. Varredura de complexidade geométrica (tris_volume vs ms)
+    sw_det = _read(os.path.join(outdir, "varredura_sv_complexidade.csv"))
+    if sw_det:
+        xd = np.arange(len(sw_det))
+        dlbls = [r["variante"] for r in sw_det]
+        fig, ax1 = plt.subplots(figsize=(8.0, 3.8))
+        ax1.bar(xd - 0.18, [_num(r, "tris_volume") for r in sw_det], 0.36,
+                label="triângulos de volume", color="#9ecae9")
+        ax1.set_xticks(xd); ax1.set_xticklabels(dlbls, fontsize=8)
+        ax1.set_ylabel("triângulos de volume")
+        ax2 = ax1.twinx()
+        ax2.plot(xd + 0.18, [_num(r, "mediana_ms_total") for r in sw_det], "s-",
+                 label="tempo mediano (ms)", color="#f58518")
+        ax2.set_ylabel("tempo mediano por quadro (ms)")
+        ax1.set_title("Varredura de Complexidade Geométrica: Carga vs. Latência")
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
+        fig.tight_layout()
+        p = os.path.join(outdir, "grafico_varredura_complexidade.png")
+        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
+
+    # 8. Varredura de extrusão (finita vs P_inf w=0)
+    sw_ext = _read(os.path.join(outdir, "varredura_sv_extrusao.csv"))
+    if sw_ext:
+        xe = np.arange(len(sw_ext))
+        elbls = [r["variante"] for r in sw_ext]
+        fig, ax = plt.subplots(figsize=(8.0, 3.8))
+        ax.bar(xe - 0.25, [_num(r, "media_precision") for r in sw_ext], 0.25,
+               label="precisão", color="#4c78a8")
+        ax.bar(xe, [_num(r, "media_recall") for r in sw_ext], 0.25,
+               label="revocação", color="#54a24b")
+        ax.bar(xe + 0.25, [_num(r, "media_f1") for r in sw_ext], 0.25,
+               label="F1", color="#e45756")
+        ax.set_xticks(xe); ax.set_xticklabels(elbls, fontsize=8)
+        ax.set_ylim(0, 1.08)
+        ax.set_ylabel("concordância com ray casting")
+        ax.set_title("Extrusão Finita (Carmack) vs. Homogênea no Infinito (P_inf, w=0)")
+        ax.grid(axis="y", alpha=0.3); ax.legend(fontsize=8)
+        fig.tight_layout()
+        p = os.path.join(outdir, "grafico_varredura_extrusao.png")
+        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
+
     return made
 
 
@@ -292,7 +357,10 @@ def write_report(outdir: str) -> str:
                       ("grafico_concordancia.png", "concordância com a referência"),
                       ("grafico_carga.png", "carga geométrica vs. preenchimento"),
                       ("grafico_stencil.png", "saturação vs. transbordo"),
-                      ("grafico_memoria.png", "perfilamento de memória por fase")):
+                      ("grafico_memoria.png", "perfilamento de memória por fase"),
+                      ("grafico_varredura_resolucao.png", "varredura de resolução"),
+                      ("grafico_varredura_complexidade.png", "varredura de complexidade geométrica"),
+                      ("grafico_varredura_extrusao.png", "varredura de regime de extrusão")):
         if os.path.exists(os.path.join(outdir, name)):
             a(f"![{cap}]({name})")
             a("")
@@ -302,7 +370,10 @@ def write_report(outdir: str) -> str:
       "a hardware dedicado. As comparações válidas são as tendências relativas entre fases.")
     a("2. Suporta tanto a extrusão finita parametrizada (`extrude_len`) quanto a extrusão "
       "homogênea no infinito ($w = 0$) com matriz $P_{\\text{inf}}$ e *depth clamping* "
-      "(Everitt & Kilgard, 2002).")
+      "(Everitt & Kilgard, 2002). Na ausência de rasterização homogênea 4D sem divisão "
+      "perspectiva, quando algum vértice extrudado aponta para trás da câmera ($w_{\\text{clip}} \\le 10^{-3}$), "
+      "o rasterizador ancora o volume em distância finita longa ($L = 500$) sob $P_{\\text{inf}}$ "
+      "para evitar singularidade de $w_{\\text{clip}} = 0$ na tampa traseira.")
     a("3. A verdade de referência por ray casting assume fonte pontual e oclusão binária; "
       "seu tempo de processamento é descontado do relógio experimental das fases.")
     a("4. Referências fundamentais: Everitt & Kilgard (2002); Segal & Akeley (OpenGL 1.4, 2002); "
