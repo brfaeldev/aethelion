@@ -1,9 +1,9 @@
-"""Testa topologia two-manifold e unicidade de instâncias em scene_crypt."""
+"""Testa topologia two-manifold e unicidade de instâncias em scenes.crypt."""
 from __future__ import annotations
 
 import numpy as np
 
-from aethelion.scenes.scene_crypt import (
+from aethelion.scenes import (
     box,
     build_crypt,
     cylinder,

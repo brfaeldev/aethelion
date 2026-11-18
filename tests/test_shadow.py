@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from aethelion.core import mathutil as mu
+from aethelion.core.mesh import topology, weld
 from aethelion.core.precision import quantize_depth
 from aethelion.core.shadow import (
     build_volume,
@@ -11,13 +12,12 @@ from aethelion.core.shadow import (
     extract_silhouette_segments,
     point_in_volume,
 )
-from aethelion.core.sv_renderer import SVRenderer, SVSettings
+from aethelion.core.sv_renderer import SVRenderer
 from aethelion.evaluation.truth import compare_masks, evaluate_renderer_ground_truth
-from aethelion.scenes.scene_crypt import box, topology, weld
 
 
-def test_shadow_volume_is_closed_and_orientable_outward():
-    b = box(1.0, 1.0, 1.0)
+def test_shadow_volume_is_closed_and_orientable_outward(unit_box):
+    b = unit_box
     light = np.array([0.0, 3.0, 0.0], dtype=np.float32)
     sides, front, back = build_volume(
         b.positions, b.indices, b.dir_edges, b.edge_face, b.edge_opp,
@@ -26,6 +26,10 @@ def test_shadow_volume_is_closed_and_orientable_outward():
     assert sides.shape[0] > 0
     assert front.shape[0] > 0
     assert back.shape[0] > 0
+    segs = extract_silhouette_segments(
+        b.positions, b.indices, b.dir_edges, b.edge_face, b.edge_opp, light
+    )
+    assert segs.shape[0] > 0
 
     closed = np.concatenate([sides, front, back], axis=0)
     # 1. Ponto logo abaixo do cubo (0, -2, 0) deve estar dentro do volume de sombra
@@ -47,8 +51,8 @@ def test_shadow_volume_is_closed_and_orientable_outward():
     assert signed_vol6 > 1.0, f"Normais invertidas no volume de sombra: {signed_vol6}"
 
 
-def test_build_volume_without_caps_for_zpass():
-    b = box(1.0, 1.0, 1.0)
+def test_build_volume_without_caps_for_zpass(unit_box):
+    b = unit_box
     light = np.array([0.0, 3.0, 0.0], dtype=np.float32)
     sides, front, back = build_volume(
         b.positions, b.indices, b.dir_edges, b.edge_face, b.edge_opp,
@@ -59,8 +63,8 @@ def test_build_volume_without_caps_for_zpass():
     assert back.shape[0] == 0
 
 
-def test_infinite_homogeneous_extrusion_and_p_inf():
-    b = box(1.0, 1.0, 1.0)
+def test_infinite_homogeneous_extrusion_and_p_inf(unit_box):
+    b = unit_box
     light = np.array([0.0, 3.0, 0.0], dtype=np.float32)
     sides, front, back = build_volume_homogeneous(
         b.positions, b.indices, b.dir_edges, b.edge_face, b.edge_opp,
@@ -92,8 +96,9 @@ def test_per_fragment_depth_quantization_and_agreement():
     assert abs(ag.f1 - 0.5) < 1e-6
 
 
-def test_renderer_runs_both_finite_and_infinite_and_overlay():
-    r = SVRenderer(SVSettings(width=96, height=72, detail=0.6, infinite_extrude=True))
+def test_renderer_runs_both_finite_and_infinite_and_overlay(small_settings):
+    small_settings.infinite_extrude = True
+    r = SVRenderer(small_settings)
     r.capture_gbuffer = True
     img = r.render(0.5)
     assert img.shape == (72, 96, 3)

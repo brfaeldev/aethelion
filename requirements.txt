@@ -1,4 +1,2 @@
-numpy>=1.21
-pillow>=9.0
-matplotlib>=3.5
-pygame-ce>=2.4
+# Dependências gerenciadas em pyproject.toml (PEP 621)
+-e .

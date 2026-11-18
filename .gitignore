@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 
 # Virtual environments
 .venv/
@@ -15,10 +16,9 @@ dist/
 *.egg-info/
 .eggs/
 
-# Experiment & conformance outputs
+# Experiment & conformance runtime outputs
 results/
-docs/
-DOCS/
+docs/*.pdf
 
 # IDE / Editor settings
 .vscode/

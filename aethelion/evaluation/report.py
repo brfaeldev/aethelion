@@ -1,197 +1,19 @@
-"""Geração de gráficos e do relatório final a partir dos CSVs do experimento."""
+"""Geração do relatório consolidado (`RELATORIO.md`) e orquestração com `plots`."""
 from __future__ import annotations
 
-import csv
 import os
 from datetime import datetime
 
-from .scenario import HIPOTESES
+from .phases import HIPOTESES
+from .plots import num_val as _num, plots, read_csv_rows as _read
+
+__all__ = ["plots", "write_report", "build"]
 
 
-def _read(path):
-    if not os.path.exists(path):
-        return []
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _num(row, key, default=0.0):
-    try:
-        v = row.get(key, "")
-        return float(v) if v != "" else default
-    except (TypeError, ValueError):
-        return default
-
-
-def _by_phase(rows):
+def _by_phase(rows: list[dict]) -> dict[str, dict]:
     return {r["fase"]: r for r in rows}
 
 
-# --------------------------------------------------------------------------- #
-def plots(outdir: str) -> list[str]:
-    rows = _read(os.path.join(outdir, "resumo.csv"))
-    if not rows:
-        return []
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except Exception:
-        return []
-
-    made = []
-    labels = [f"{r['fase']}\n{r['algoritmo']}" for r in rows]
-    x = np.arange(len(rows))
-
-    # 1. Custo por etapa
-    fig, ax = plt.subplots(figsize=(8.5, 4.2))
-    geo = [_num(r, "mediana_ms_geometry") for r in rows]
-    sil = [_num(r, "mediana_ms_silhouette") for r in rows]
-    stn = [_num(r, "mediana_ms_stencil") for r in rows]
-    ax.bar(x, geo, label="geometria", color="#4c78a8")
-    ax.bar(x, sil, bottom=geo, label="silhueta", color="#f58518")
-    ax.bar(x, stn, bottom=[a + b for a, b in zip(geo, sil)],
-           label="stencil", color="#e45756")
-    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("tempo mediano por quadro (ms)")
-    ax.set_title("Custo por etapa e por fase (backend cpu-sw)")
-    ax.legend(fontsize=8)
-    fig.tight_layout()
-    p = os.path.join(outdir, "grafico_custo_etapas.png")
-    fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 2. Concordância com a referência
-    fig, ax = plt.subplots(figsize=(8.5, 4.2))
-    for key, color in (("media_precision", "#4c78a8"),
-                       ("media_recall", "#54a24b"),
-                       ("media_f1", "#e45756")):
-        ax.plot(x, [_num(r, key) for r in rows], "o-", color=color,
-                label=key.replace("media_", ""))
-    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylim(0, 1.05); ax.set_ylabel("concordância com o ray casting")
-    ax.set_title("Precisão, revocação e F1 por fase")
-    ax.grid(alpha=0.3); ax.legend(fontsize=8)
-    fig.tight_layout()
-    p = os.path.join(outdir, "grafico_concordancia.png")
-    fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 3. Carga geométrica e de preenchimento
-    fig, ax1 = plt.subplots(figsize=(8.5, 4.2))
-    ax1.bar(x - 0.2, [_num(r, "mediana_tris_volume") for r in rows], 0.4,
-            label="triângulos de volume", color="#9ecae9")
-    ax1.set_ylabel("triângulos de volume"); ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontsize=8)
-    ax2 = ax1.twinx()
-    ax2.bar(x + 0.2, [_num(r, "mediana_frag_stencil") for r in rows], 0.4,
-            label="fragmentos de stencil", color="#ffbf79")
-    ax2.set_ylabel("fragmentos de stencil")
-    ax1.set_title("Carga geométrica vs. carga de preenchimento")
-    h1, l1 = ax1.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
-    fig.tight_layout()
-    p = os.path.join(outdir, "grafico_carga.png")
-    fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 4. Saturação de stencil
-    fig, ax = plt.subplots(figsize=(8.5, 3.6))
-    ax.bar(x - 0.2, [_num(r, "mediana_stencil_saturation") for r in rows], 0.4,
-           label="saturações (INCR/DECR)", color="#e45756")
-    ax.bar(x + 0.2, [_num(r, "mediana_stencil_wrap_events") for r in rows], 0.4,
-           label="transbordos (WRAP)", color="#54a24b")
-    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("eventos por quadro (mediana)")
-    ax.set_title("Saturação versus transbordo circular do contador de stencil")
-    ax.legend(fontsize=8)
-    fig.tight_layout()
-    p = os.path.join(outdir, "grafico_stencil.png")
-    fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 5. Perfilamento de memória por fase (buffers arquiteturais + geometria de volume)
-    if any(_num(r, "mediana_mem_total_kb") > 0 for r in rows):
-        fig, ax = plt.subplots(figsize=(8.5, 3.8))
-        mbuf = [_num(r, "mediana_mem_buffers_kb") for r in rows]
-        mgeo = [_num(r, "mediana_mem_geometry_kb") for r in rows]
-        ax.bar(x, mbuf, label="buffers por pixel (cor + depth + stencil)", color="#4c78a8")
-        ax.bar(x, mgeo, bottom=mbuf, label="malhas da cena + volumes extrudados", color="#72b7b2")
-        ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8)
-        ax.set_ylabel("memória alocada (KB)")
-        ax.set_title("Perfilamento de consumo de memória por fase")
-        ax.legend(fontsize=8)
-        fig.tight_layout()
-        p = os.path.join(outdir, "grafico_memoria.png")
-        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 6. Varredura de resolução (latência/FPS e memória)
-    sw_res = _read(os.path.join(outdir, "varredura_sv_resolucao.csv"))
-    if sw_res:
-        xr = np.arange(len(sw_res))
-        rlbls = [r["variante"] for r in sw_res]
-        fig, ax1 = plt.subplots(figsize=(8.0, 3.8))
-        ax1.bar(xr - 0.18, [_num(r, "mediana_ms_total") for r in sw_res], 0.36,
-                label="tempo mediano (ms)", color="#4c78a8")
-        ax1.set_xticks(xr); ax1.set_xticklabels(rlbls, fontsize=8)
-        ax1.set_ylabel("tempo mediano por quadro (ms)")
-        ax2 = ax1.twinx()
-        ax2.plot(xr + 0.18, [_num(r, "mem_total_kb") for r in sw_res], "o-",
-                 label="memória total (KB)", color="#e45756")
-        ax2.set_ylabel("memória alocada (KB)")
-        ax1.set_title("Varredura de Resolução: Latência e Consumo de Memória")
-        h1, l1 = ax1.get_legend_handles_labels()
-        h2, l2 = ax2.get_legend_handles_labels()
-        ax1.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
-        fig.tight_layout()
-        p = os.path.join(outdir, "grafico_varredura_resolucao.png")
-        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 7. Varredura de complexidade geométrica (tris_volume vs ms)
-    sw_det = _read(os.path.join(outdir, "varredura_sv_complexidade.csv"))
-    if sw_det:
-        xd = np.arange(len(sw_det))
-        dlbls = [r["variante"] for r in sw_det]
-        fig, ax1 = plt.subplots(figsize=(8.0, 3.8))
-        ax1.bar(xd - 0.18, [_num(r, "tris_volume") for r in sw_det], 0.36,
-                label="triângulos de volume", color="#9ecae9")
-        ax1.set_xticks(xd); ax1.set_xticklabels(dlbls, fontsize=8)
-        ax1.set_ylabel("triângulos de volume")
-        ax2 = ax1.twinx()
-        ax2.plot(xd + 0.18, [_num(r, "mediana_ms_total") for r in sw_det], "s-",
-                 label="tempo mediano (ms)", color="#f58518")
-        ax2.set_ylabel("tempo mediano por quadro (ms)")
-        ax1.set_title("Varredura de Complexidade Geométrica: Carga vs. Latência")
-        h1, l1 = ax1.get_legend_handles_labels()
-        h2, l2 = ax2.get_legend_handles_labels()
-        ax1.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
-        fig.tight_layout()
-        p = os.path.join(outdir, "grafico_varredura_complexidade.png")
-        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    # 8. Varredura de extrusão (finita vs P_inf w=0)
-    sw_ext = _read(os.path.join(outdir, "varredura_sv_extrusao.csv"))
-    if sw_ext:
-        xe = np.arange(len(sw_ext))
-        elbls = [r["variante"] for r in sw_ext]
-        fig, ax = plt.subplots(figsize=(8.0, 3.8))
-        ax.bar(xe - 0.25, [_num(r, "media_precision") for r in sw_ext], 0.25,
-               label="precisão", color="#4c78a8")
-        ax.bar(xe, [_num(r, "media_recall") for r in sw_ext], 0.25,
-               label="revocação", color="#54a24b")
-        ax.bar(xe + 0.25, [_num(r, "media_f1") for r in sw_ext], 0.25,
-               label="F1", color="#e45756")
-        ax.set_xticks(xe); ax.set_xticklabels(elbls, fontsize=8)
-        ax.set_ylim(0, 1.08)
-        ax.set_ylabel("concordância com ray casting")
-        ax.set_title("Extrusão Finita (Carmack) vs. Homogênea no Infinito (P_inf, w=0)")
-        ax.grid(axis="y", alpha=0.3); ax.legend(fontsize=8)
-        fig.tight_layout()
-        p = os.path.join(outdir, "grafico_varredura_extrusao.png")
-        fig.savefig(p, dpi=130); plt.close(fig); made.append(p)
-
-    return made
-
-
-# --------------------------------------------------------------------------- #
 def _verdict(cond: bool | None) -> str:
     if cond is None:
         return "INCONCLUSIVO (dados insuficientes)"
@@ -215,25 +37,15 @@ def write_report(outdir: str) -> str:
     def tv(k):
         return _num(ph[k], "mediana_tris_volume") if k in ph else 0.0
 
-    # Veredictos
-    h1 = None
-    if "C" in ph and "D" in ph:
-        h1 = f1("D") > f1("C")
-    h2 = None
-    if "A" in ph and "B" in ph:
-        h2 = (ms("B") > ms("A")) and (tv("B") > tv("A"))
-    h3 = None
-    if "E" in ph and "F" in ph:
-        h3 = f1("F") > f1("E")
-    h4 = None
-    if "G" in ph and "B" in ph:
-        h4 = f1("G") < f1("B")
-    h5 = None
-    if "H" in ph and "B" in ph:
-        h5 = _num(ph["H"], "media_recall") < _num(ph["B"], "media_recall")
+    h1 = (f1("D") > f1("C")) if ("C" in ph and "D" in ph) else None
+    h2 = ((ms("B") > ms("A")) and (tv("B") > tv("A"))) if ("A" in ph and "B" in ph) else None
+    h3 = (f1("F") > f1("E")) if ("E" in ph and "F" in ph) else None
+    h4 = (f1("G") < f1("B")) if ("G" in ph and "B" in ph) else None
+    h5 = (_num(ph["H"], "media_recall") < _num(ph["B"], "media_recall")) if ("H" in ph and "B" in ph) else None
 
     passed = sum(1 for r in conf if r.get("resultado") == "PASS")
     total = len(conf)
+    backend_id = resumo[0].get("backend", "cpu-sw") if resumo else "cpu-sw"
 
     lines = []
     a = lines.append
@@ -242,10 +54,9 @@ def write_report(outdir: str) -> str:
     a(f"Gerado automaticamente em {datetime.now():%Y-%m-%d %H:%M}. "
       "Todos os números abaixo vêm de `experimento.csv` e `resumo.csv`.")
     a("")
-    a("> **Backend.** Todas as medições de tempo foram obtidas no rasterizador "
-      "por software (`cpu-sw`). Não descrevem o desempenho de uma GPU e não "
-      "devem ser comparadas com hardware real. O backend é registrado em cada "
-      "linha dos CSVs.")
+    a(f"> **Backend.** As medições desta sessão foram obtidas no backend "
+      f"`{backend_id}`. O identificador do backend é registrado em cada "
+      "linha dos CSVs para rastreabilidade.")
     a("")
     a("## 1. Pergunta de pesquisa")
     a("")
@@ -366,8 +177,8 @@ def write_report(outdir: str) -> str:
             a("")
     a("## 7. Limitações declaradas e Referências")
     a("")
-    a("1. Rasterizador em Python/NumPy (`cpu-sw`): os tempos absolutos não são comparáveis "
-      "a hardware dedicado. As comparações válidas são as tendências relativas entre fases.")
+    a(f"1. Backend executado (`{backend_id}`): no modo por software (`cpu-sw`/`cpu-fast`), os tempos absolutos "
+      "não são comparáveis a hardware dedicado; as comparações válidas são as tendências relativas entre fases.")
     a("2. Suporta tanto a extrusão finita parametrizada (`extrude_len`) quanto a extrusão "
       "homogênea no infinito ($w = 0$) com matriz $P_{\\text{inf}}$ e *depth clamping* "
       "(Everitt & Kilgard, 2002). Na ausência de rasterização homogênea 4D sem divisão "
