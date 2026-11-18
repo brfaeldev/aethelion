@@ -8,18 +8,40 @@ in vec3 in_norm;
 uniform mat4 u_vp;
 uniform vec2 u_res;
 uniform int u_vertex_snap;
+uniform int u_precision;
 out vec3 v_world;
 out vec3 v_norm;
+
+vec4 apply_prec4(vec4 v, int mode) {
+    if (mode == 1) {
+        vec4 c = clamp(v, -65500.0, 65500.0);
+        vec4 a = abs(c);
+        vec4 step_val = exp2(floor(log2(max(a, vec4(1e-8)))) - 10.0);
+        return round(c / step_val) * step_val;
+    }
+    if (mode == 2) {
+        vec4 c = clamp(v, -32767.0, 32767.0);
+        return round(c * 65536.0) / 65536.0;
+    }
+    if (mode == 3) {
+        vec4 c = clamp(v, -2047.0, 2047.0);
+        return round(c * 16.0) / 16.0;
+    }
+    return v;
+}
+
 void main() {
-    vec4 clip = u_vp * vec4(in_pos, 1.0);
-    if (u_vertex_snap > 0 && clip.w > 1e-5) {
-        vec3 ndc = clip.xyz / clip.w;
-        float g = float(u_vertex_snap);
-        vec2 scr = vec2((ndc.x * 0.5 + 0.5) * u_res.x,
-                        (1.0 - (ndc.y * 0.5 + 0.5)) * u_res.y);
-        scr = round(scr * g) / g;
-        ndc.x = (scr.x / u_res.x) * 2.0 - 1.0;
-        ndc.y = (1.0 - scr.y / u_res.y) * 2.0 - 1.0;
+    vec4 clip = apply_prec4(u_vp * vec4(in_pos, 1.0), u_precision);
+    if (clip.w > 1e-5) {
+        vec3 ndc = apply_prec4(vec4(clip.xyz / clip.w, 0.0), u_precision).xyz;
+        if (u_vertex_snap > 0) {
+            float g = float(u_vertex_snap);
+            vec2 scr = vec2((ndc.x * 0.5 + 0.5) * u_res.x,
+                            (1.0 - (ndc.y * 0.5 + 0.5)) * u_res.y);
+            scr = round(scr * g) / g;
+            ndc.x = (scr.x / u_res.x) * 2.0 - 1.0;
+            ndc.y = (1.0 - scr.y / u_res.y) * 2.0 - 1.0;
+        }
         clip.xyz = ndc * clip.w;
     }
     v_world = in_pos;
@@ -86,9 +108,43 @@ SV_VERT = """
 #version 330
 in vec4 in_pos;
 uniform mat4 u_vp;
+uniform vec2 u_res;
+uniform int u_vertex_snap;
+uniform int u_precision;
 uniform int u_depth_clamp;
+
+vec4 apply_prec4(vec4 v, int mode) {
+    if (mode == 1) {
+        vec4 c = clamp(v, -65500.0, 65500.0);
+        vec4 a = abs(c);
+        vec4 step_val = exp2(floor(log2(max(a, vec4(1e-8)))) - 10.0);
+        return round(c / step_val) * step_val;
+    }
+    if (mode == 2) {
+        vec4 c = clamp(v, -32767.0, 32767.0);
+        return round(c * 65536.0) / 65536.0;
+    }
+    if (mode == 3) {
+        vec4 c = clamp(v, -2047.0, 2047.0);
+        return round(c * 16.0) / 16.0;
+    }
+    return v;
+}
+
 void main() {
-    vec4 clip = u_vp * in_pos;
+    vec4 clip = apply_prec4(u_vp * in_pos, u_precision);
+    if (clip.w > 1e-5) {
+        vec3 ndc = apply_prec4(vec4(clip.xyz / clip.w, 0.0), u_precision).xyz;
+        if (u_vertex_snap > 0) {
+            float g = float(u_vertex_snap);
+            vec2 scr = vec2((ndc.x * 0.5 + 0.5) * u_res.x,
+                            (1.0 - (ndc.y * 0.5 + 0.5)) * u_res.y);
+            scr = round(scr * g) / g;
+            ndc.x = (scr.x / u_res.x) * 2.0 - 1.0;
+            ndc.y = (1.0 - scr.y / u_res.y) * 2.0 - 1.0;
+        }
+        clip.xyz = ndc * clip.w;
+    }
     if (u_depth_clamp != 0 && clip.w > 0.0 && clip.z > clip.w) {
         clip.z = clip.w;
     }
@@ -147,7 +203,8 @@ float bayer4(ivec2 p) {
 }
 
 void main() {
-    vec3 lit = texture(u_lit, v_uv).rgb;
+    vec4 lit_rgba = texture(u_lit, v_uv);
+    vec3 lit = lit_rgba.rgb;
     vec3 amb = texture(u_amb, v_uv).rgb;
     int s_val = 0;
     if (u_use_stencil != 0) {
@@ -171,6 +228,6 @@ void main() {
         }
         col = round(col * levels) / levels;
     }
-    out_col = vec4(col, 1.0);
+    out_col = vec4(col, lit_rgba.a);
 }
 """

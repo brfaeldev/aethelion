@@ -14,15 +14,13 @@ from __future__ import annotations
 import argparse
 import json
 
-from .core.backend import BACKENDS, PRESETS, apply_preset
-from .core.settings import SVSettings
+from .core.settings import BACKENDS, PRESETS, SVSettings, apply_preset
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="aethelion",
         description="Aethelion — sombras volumétricas por stencil (Eixo 7).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     m = p.add_argument_group("modo")
@@ -34,13 +32,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="executa varreduras de resolução, complexidade e extrusão P_inf")
     m.add_argument("--report", action="store_true",
                    help="gera gráficos e RELATORIO.md a partir dos CSVs")
-    m.add_argument("-o", "--outdir", default="results")
+    m.add_argument("-o", "--outdir", default="results",
+                   help="diretório de saída dos artefatos (padrão: results)")
     m.add_argument("--measure-every", type=float, default=2.5,
-                   help="intervalo (s) entre medições contra a referência")
+                   help="intervalo (s) entre medições contra a referência (padrão: 2.5)")
     m.add_argument("--deterministic", action="store_true",
                    help="usa passo temporal fixo por quadro em vez de relógio de parede")
     m.add_argument("--fixed-dt", type=float, default=0.5,
-                   help="passo temporal fixo (s) quando --deterministic está ativo")
+                   help="passo temporal fixo (s) quando --deterministic está ativo (padrão: 0.5)")
     m.add_argument("--config", type=str, default=None,
                    help="caminho de arquivo JSON com parâmetros de SVSettings")
     m.add_argument("--preset", choices=list(PRESETS), default=None,
@@ -52,9 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--fullscreen", action="store_true",
                    help="inicia a janela do visualizador em tela cheia (F11 alterna)")
     w.add_argument("--win-width", type=int, default=1280,
-                   help="largura inicial da janela em pixels")
+                   help="largura inicial da janela em pixels (padrão: 1280)")
     w.add_argument("--win-height", type=int, default=780,
-                   help="altura inicial da janela em pixels")
+                   help="altura inicial da janela em pixels (padrão: 780)")
     w.add_argument("--display-filter", choices=["nearest", "bilinear"], default=None,
                    help="filtro de escala na janela (padrão: nearest)")
 
@@ -155,7 +154,7 @@ def settings_from(a) -> SVSettings:
         s.dither = True
     if getattr(a, "no_texture", None):
         s.textured = False
-    return s
+    return s.validate()
 
 
 def main(argv: list[str] | None = None) -> int:

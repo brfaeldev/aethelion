@@ -1,9 +1,6 @@
 """Núcleo do motor gráfico e estágios do pipeline de sombras volumétricas."""
 from .backend import (
-    BACKENDS,
-    PRESETS,
     RendererProtocol,
-    apply_preset,
     available_backends,
     create_renderer,
 )
@@ -27,7 +24,7 @@ from .mesh import Prop, Solid, make_solid, topology, vertex_normals, weld
 from .overlay import draw_line_2d, render_volume_overlay
 from .precision import apply_precision, quantize_depth
 from .raster import scan_triangle, scan_triangle_fast
-from .settings import BACKEND, BAYER4, SVSettings, SVStats
+from .settings import BACKEND, BACKENDS, BAYER4, PRESETS, SVSettings, SVStats, apply_preset
 from .shadow import (
     build_volume,
     build_volume_homogeneous,

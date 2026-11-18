@@ -12,10 +12,7 @@ Subpacotes:
 """
 from . import cli, core, evaluation, scenes, ui
 from .core.backend import (
-    BACKENDS,
-    PRESETS,
     RendererProtocol,
-    apply_preset,
     available_backends,
     create_renderer,
 )
@@ -23,7 +20,7 @@ from .core.base_renderer import BaseRenderer
 from .core.clipping import clip_near
 from .core.mesh import Prop, Solid, make_solid, topology, vertex_normals, weld
 from .core.precision import apply_precision, quantize_depth
-from .core.settings import BACKEND, SVSettings, SVStats
+from .core.settings import BACKEND, BACKENDS, PRESETS, SVSettings, SVStats, apply_preset
 from .core.stencil import StencilBuffer
 from .core.sv_renderer import FastCPURenderer, SVRenderer
 from .core.texture import Texture, make_textures

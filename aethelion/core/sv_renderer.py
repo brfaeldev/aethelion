@@ -273,7 +273,7 @@ class SVRenderer(BaseRenderer):
         ext_len = s.extrude_len if not use_inf else 40.0
 
         batches, occluder_cache, st.ms_silhouette = self._build_cached_volumes(
-            vp, use_inf, homogeneous_4d=False
+            vp, use_inf
         )
         st.volumes_with_camera, obs_overhead = self._count_volumes_with_camera(
             occluder_cache, ext_len

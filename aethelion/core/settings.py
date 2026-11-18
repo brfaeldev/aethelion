@@ -98,6 +98,25 @@ class SVSettings:
     display_filter: str = "nearest"  # nearest | bilinear (escala na janela)
     backend: str = "cpu-sw"          # cpu-sw | cpu-fast | gpu-gl
 
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> "SVSettings":
+        """Normaliza e garante que todos os parâmetros estejam em faixas válidas."""
+        self.width = max(16, int(self.width))
+        self.height = max(16, int(self.height))
+        self.stencil_bits = int(np.clip(int(self.stencil_bits), 1, 8))
+        self.color_bits = int(np.clip(int(self.color_bits), 1, 8))
+        self.depth_bits = int(np.clip(int(self.depth_bits), 0, 32))
+        self.near = max(1e-3, float(self.near))
+        self.far = max(self.near + 1.0, float(self.far))
+        self.fov = float(np.clip(float(self.fov), 15.0, 160.0))
+        self.detail = float(np.clip(float(self.detail), 0.25, 4.0))
+        self.ambient = float(np.clip(float(self.ambient), 0.0, 1.0))
+        self.texture_res = max(2, int(self.texture_res))
+        self.vertex_snap = max(0, int(self.vertex_snap))
+        return self
+
     def to_dict(self) -> dict:
         return asdict(self)
 

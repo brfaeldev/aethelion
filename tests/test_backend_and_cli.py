@@ -6,13 +6,11 @@ import numpy as np
 
 from aethelion.cli import build_parser, settings_from
 from aethelion.core.backend import (
-    PRESETS,
     RendererProtocol,
-    apply_preset,
     available_backends,
     create_renderer,
 )
-from aethelion.core.settings import SVSettings
+from aethelion.core.settings import PRESETS, SVSettings, apply_preset
 
 
 def test_cpu_sw_and_cpu_fast_equivalence():
@@ -53,11 +51,17 @@ def test_gpu_fallback_when_moderngl_missing():
     else:
         from aethelion.evaluation.phases import camera_for
         # Verifica z-fail e saturação vs wrap de 3 bits no backend gpu-gl
-        s_sat = SVSettings(width=128, height=96, algorithm="zfail", stencil_bits=3, stencil_wrap=False)
+        s_sat = SVSettings(
+            width=128, height=96, algorithm="zfail",
+            stencil_bits=3, stencil_wrap=False,
+            precision="fixed12_4", vertex_snap=1,
+        )
         r_gpu = create_renderer("gpu-gl", s_sat, fallback=False)
         try:
             r_gpu.camera_eye, r_gpu.camera_target = camera_for("grade", 0.5)
             r_gpu.render(54.0)
+            assert r_gpu.stats.pixels_visible > 0
+            assert 0 <= r_gpu.stats.pixels_shadow <= r_gpu.stats.pixels_visible
             assert r_gpu.stats.stencil_saturation > 0
             assert r_gpu.stats.stencil_wrap_events == 0
 
@@ -132,4 +136,52 @@ def test_componentized_modules_and_custom_scene_injection(unit_box):
     assert 0 < canvas.scroll <= 400
     canvas.clamp_scroll(view_h=900)
     assert canvas.scroll == 0
+
+
+def test_settings_validation_and_experiment_runner_e2e(tmp_path, unit_box):
+    from aethelion.core.mesh import Prop
+    from aethelion.core.sv_renderer import SVRenderer
+    from aethelion.evaluation.phases import Phase
+    from aethelion.evaluation.report import write_report
+    from aethelion.evaluation.runner import ExperimentRunner
+
+    # 1. Validação defensiva de limites em SVSettings
+    s_bad = SVSettings(
+        width=2, height=-10, stencil_bits=99, color_bits=0,
+        depth_bits=-4, near=-1.0, far=0.0, fov=500.0, detail=99.0, ambient=5.0,
+    )
+    assert s_bad.width == 16 and s_bad.height == 16
+    assert s_bad.stencil_bits == 8 and s_bad.color_bits == 1
+    assert s_bad.depth_bits == 0
+    assert s_bad.near >= 1e-3 and s_bad.far > s_bad.near
+    assert s_bad.fov == 160.0 and s_bad.detail == 4.0 and s_bad.ambient == 1.0
+
+    # 2. Execução ponta a ponta de ExperimentRunner + write_report
+    custom_scene = lambda detail: [Prop(unit_box, name="cubo_teste")]
+    custom_light = lambda t: np.array([0.0, 3.0, 2.0], dtype=np.float32)
+    r = SVRenderer(
+        SVSettings(width=48, height=36),
+        scene_builder=custom_scene,
+        light_fn=custom_light,
+    )
+    phases = [
+        Phase("A", "z-pass curto", "H2", 1.0, {"algorithm": "zpass"}, "orbita", ""),
+        Phase("B", "z-fail curto", "H2", 1.0, {"algorithm": "zfail"}, "orbita", ""),
+    ]
+    runner = ExperimentRunner(
+        r, outdir=str(tmp_path), measure_every=0.5,
+        phases=phases, deterministic=True, fixed_dt=0.5,
+    )
+    runner.start()
+    while runner.active:
+        runner.step()
+
+    assert runner.finished
+    assert (tmp_path / "experimento.csv").exists()
+    assert (tmp_path / "resumo.csv").exists()
+    assert (tmp_path / "eventos.log").exists()
+    rep_path = write_report(str(tmp_path))
+    assert (tmp_path / "RELATORIO.md").exists()
+    assert "Relatório Experimental" in open(rep_path, encoding="utf-8").read()
+
 

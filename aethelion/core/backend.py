@@ -6,15 +6,12 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from .settings import BACKENDS, PRESETS, SVSettings, SVStats, apply_preset
+from .settings import BACKENDS, SVSettings, SVStats
 from .sv_renderer import FastCPURenderer, SVRenderer
 
 __all__ = [
-    "BACKENDS",
-    "PRESETS",
     "RendererProtocol",
     "available_backends",
-    "apply_preset",
     "create_renderer",
 ]
 

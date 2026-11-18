@@ -59,6 +59,8 @@ class BaseRenderer:
         self._soups: dict[int, tuple[np.ndarray, np.ndarray]] = {}
         self._vol_cache_key: tuple | None = None
         self._vol_cache_data: tuple | None = None
+        self._cam_vol_cache_key: tuple | None = None
+        self._cam_vol_cache_val: int = 0
         self.capture_gbuffer = False
         self._last_vp: np.ndarray = mu.identity()
         self.shadow_mask = np.zeros((self.settings.height, self.settings.width), bool)
@@ -68,6 +70,7 @@ class BaseRenderer:
         self._soups.clear()
         self._vol_cache_key = None
         self._vol_cache_data = None
+        self._cam_vol_cache_key = None
 
     def rebuild_scene(self) -> None:
         """Reconstrói a malha da cena com o `detail` atual e limpa caches."""
@@ -160,10 +163,8 @@ class BaseRenderer:
         self,
         vp: np.ndarray,
         use_inf: bool,
-        *,
-        homogeneous_4d: bool = False,
     ) -> tuple[list[np.ndarray], list[tuple], float]:
-        """Extrai silhuetas e constrói volumes de sombra (com cache por luz/configuração)."""
+        """Extrai silhuetas e constrói volumes de sombra homogêneos 4D (com cache)."""
         s = self.settings
         zfail = (s.algorithm == "zfail")
         ext_len = s.extrude_len if not use_inf else 40.0
@@ -173,7 +174,6 @@ class BaseRenderer:
             tuple(float(v) for v in self.light),
             s.algorithm,
             use_inf,
-            bool(homogeneous_4d),
             float(ext_len),
             float(s.detail),
             len(self.scene),
@@ -199,25 +199,22 @@ class BaseRenderer:
                         self.light, length=(ext_len if inf_ok else 500.0),
                         infinite=inf_ok, caps=zfail,
                     )
-                    occluder_cache.append((prop, pw, None))
-                elif homogeneous_4d:
+                    occluder_cache.append([prop, pw, None])
+                else:
                     sides, front, back = sv.build_volume_homogeneous(
                         pw, prop.solid.indices, prop.solid.dir_edges,
                         prop.solid.edge_face, prop.solid.edge_opp,
                         self.light, length=ext_len, infinite=False, caps=zfail,
                     )
                     closed_fin = (
-                        (sides[..., :3], front[..., :3], back[..., :3]) if zfail else None
+                        np.concatenate(
+                            [x[..., :3] for x in (sides, front, back) if x.shape[0]],
+                            axis=0,
+                        )
+                        if zfail and (sides.shape[0] or front.shape[0])
+                        else None
                     )
-                    occluder_cache.append((prop, pw, closed_fin))
-                else:
-                    sides, front, back = sv.build_volume(
-                        pw, prop.solid.indices, prop.solid.dir_edges,
-                        prop.solid.edge_face, prop.solid.edge_opp,
-                        self.light, ext_len, caps=zfail,
-                    )
-                    closed_fin = (sides, front, back) if zfail else None
-                    occluder_cache.append((prop, pw, closed_fin))
+                    occluder_cache.append([prop, pw, closed_fin])
 
                 if zfail:
                     parts = [x for x in (sides, front, back) if x.shape[0]]
@@ -234,29 +231,43 @@ class BaseRenderer:
 
     def _count_volumes_with_camera(
         self,
-        occluder_cache: list[tuple],
+        occluder_cache: list[list],
         ext_len: float,
     ) -> tuple[int, float]:
         """Conta quantos volumes de sombra contêm a câmera (fora do cronômetro do algoritmo)."""
         t_obs0 = time.perf_counter()
-        vis_len = ext_len if ext_len > 0 else 40.0
+        vis_len = float(ext_len if ext_len > 0 else 40.0)
+        cam_key = (
+            tuple(float(v) for v in self.light),
+            tuple(float(v) for v in self.camera_eye),
+            vis_len,
+            float(self.settings.detail),
+            len(self.scene),
+        )
+        if self._cam_vol_cache_key == cam_key:
+            return self._cam_vol_cache_val, time.perf_counter() - t_obs0
+
         count = 0
-        for prop, pw, closed_fin in occluder_cache:
-            if closed_fin is not None:
-                sides3, front3, back3 = closed_fin
-            else:
+        for entry in occluder_cache:
+            prop, pw, closed3 = entry
+            if closed3 is None:
                 sides3, front3, back3 = sv.build_volume(
                     pw, prop.solid.indices, prop.solid.dir_edges,
                     prop.solid.edge_face, prop.solid.edge_opp,
                     self.light, vis_len, caps=True,
                 )
-            if sides3.shape[0] == 0 and front3.shape[0] == 0:
-                continue
-            closed3 = np.concatenate(
-                [x for x in (sides3, front3, back3) if x.shape[0]], axis=0
-            )
-            if sv.point_in_volume(self.camera_eye, closed3):
+                if sides3.shape[0] == 0 and front3.shape[0] == 0:
+                    entry[2] = np.zeros((0, 3, 3), dtype=F)
+                    continue
+                closed3 = np.concatenate(
+                    [x for x in (sides3, front3, back3) if x.shape[0]], axis=0
+                )
+                entry[2] = closed3
+            if closed3.shape[0] > 0 and sv.point_in_volume(self.camera_eye, closed3):
                 count += 1
+
+        self._cam_vol_cache_key = cam_key
+        self._cam_vol_cache_val = count
         obs_overhead = time.perf_counter() - t_obs0
         return count, obs_overhead
 
