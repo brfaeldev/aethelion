@@ -45,9 +45,12 @@ luz e $f_2$ não está.
 Para fechar o volume de sombra de forma robusta no infinito (Everitt & Kilgard,
 2002, Seção 4.2), cada vértice $V = \langle V_x, V_y, V_z, 1 \rangle$ das faces
 voltadas para a luz é extrudado na direção oposta à luz como um ponto direcional
-no infinito com coordenada homogênea $w = 0$:
+no infinito com coordenada homogênea $w = 0$ (normalizado pela direção unitária
+$\hat{\mathbf{d}} = (\mathbf{V} - \mathbf{L})/\|\mathbf{V} - \mathbf{L}\|$, o que
+é projetivamente invariante em $\mathbb{P}^3$ e evita estouro em ponto fixo ou
+`float16`):
 
-$$V_\infty = \langle V_x - L_x, \; V_y - L_y, \; V_z - L_z, \; 0 \rangle$$
+$$V_\infty = \langle V_x - L_x, \; V_y - L_y, \; V_z - L_z, \; 0 \rangle \;\equiv\; \langle \hat{d}_x, \; \hat{d}_y, \; \hat{d}_z, \; 0 \rangle$$
 
 Para comparação experimental com a aproximação finita de Carmack (Fase H), o
 sistema também modela a extrusão finita por distância $L_{\text{ext}}$:

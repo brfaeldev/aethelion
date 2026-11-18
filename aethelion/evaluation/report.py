@@ -7,7 +7,7 @@ from datetime import datetime
 from .phases import HIPOTESES
 from .plots import num_val as _num, plots, read_csv_rows as _read
 
-__all__ = ["plots", "write_report", "build"]
+__all__ = ["write_report", "build"]
 
 
 def _by_phase(rows: list[dict]) -> dict[str, dict]:

@@ -65,11 +65,11 @@ Do ponto de vista fundacional do pipeline gráfico, Blinn~\cite{blinn1993} forma
 
 \subsection{Arquitetura do Sistema e Estruturas de Dados}
 
-O sistema foi estruturado de forma modular em Python/NumPy (\texttt{aethelion/core/}, \texttt{scenes/}, \texttt{evaluation/}, \texttt{ui/}). A cena experimental consiste em uma cripta procedural composta por malhas triangulares fechadas (\textit{2-manifold}) com conectividade pré-computada: para cada malha soldada, armazenam-se vértices, índices de triângulos, arestas direcionadas (\texttt{dir\_edges}), faces incidentes (\texttt{edge\_face}) e arestas opostas (\texttt{edge\_opp}). A invariante topológica de fechamento ($\text{oposta} \ge 0$ e orientação consistente) é verificada por testes automatizados (\texttt{test\_topology.py}).
+O sistema foi estruturado de forma modular e componentizada em Python (\texttt{aethelion/core/}, \texttt{scenes/}, \texttt{evaluation/}, \texttt{ui/}), oferecendo três backends intercambiáveis sob um mesmo protocolo (\texttt{RendererProtocol}): rasterizador de referência em NumPy (\texttt{cpu-sw}), rasterizador acelerado via JIT Numba (\texttt{cpu-fast}) e backend de hardware em OpenGL~3.3/ModernGL (\texttt{gpu-gl}). A cena experimental consiste em uma cripta procedural composta por malhas triangulares fechadas (\textit{2-manifold}) com conectividade pré-computada: para cada malha soldada, armazenam-se vértices, índices de triângulos, arestas direcionadas (\texttt{dir\_edges}), faces incidentes (\texttt{edge\_face}) e arestas opostas (\texttt{edge\_opp}). A invariante topológica de fechamento ($\text{oposta} \ge 0$ e orientação consistente) é verificada por testes automatizados (\texttt{test\_topology.py}).
 
 O framebuffer arquitetural simula restrições configuráveis por pixel:
 \begin{itemize}
-    \item \textbf{Buffer de cor}: resolução ajustável ($160\times 120$ até $640\times 480$), quantização de 1 a 8~bits por canal e matriz de \textit{dithering} ordenado de Bayer $4\times 4$;
+    \item \textbf{Buffer de cor}: resolução ajustável ($128\times 96$ até $3840\times 2160$), quantização de 1 a 8~bits por canal e matriz de \textit{dithering} ordenado de Bayer $4\times 4$;
     \item \textbf{Buffer de profundidade}: ponto flutuante de 32~bits (\texttt{depth\_bits=0}) ou quantizado por fragmento em $D \in \{10, 12, 16, 24\}$ bits;
     \item \textbf{Buffer de stencil} (\texttt{StencilBuffer}): largura configurável $b \in [1, 8]$ bits, modo saturado ou circular (\texttt{wrap}), e contadores observacionais de fragmentos, eventos de saturação e transbordos.
 \end{itemize}
@@ -82,9 +82,9 @@ Seja uma malha fechada e uma fonte de luz pontual em coordenadas homogêneas $\m
 \end{equation}
 Uma aresta orientada $(v_a, v_b)$ compartilhada por duas faces adjacentes $f_1$ e $f_2$ pertence ao contorno de silhueta se, e somente se, $f_1$ está voltada para a luz e $f_2$ não está.
 
-Para fechar o volume no infinito conforme Everitt e Kilgard~\cite{everitt2002}, cada vértice $V = \langle V_x, V_y, V_z, 1 \rangle$ das faces voltadas para a luz é extrudado como um ponto direcional com coordenada homogênea $w=0$:
+Para fechar o volume no infinito conforme Everitt e Kilgard~\cite{everitt2002}, cada vértice $V = \langle V_x, V_y, V_z, 1 \rangle$ das faces voltadas para a luz é extrudado como um ponto direcional com coordenada homogênea $w=0$ (normalizado pela direção unitária $\hat{\mathbf{d}} = (\mathbf{V} - \mathbf{L})/\|\mathbf{V} - \mathbf{L}\|$, o que é projetivamente invariante em $\mathbb{P}^3$ e evita estouro em \texttt{float16} ou ponto fixo):
 \begin{equation}
-V_\infty = \langle V_x - L_x,\; V_y - L_y,\; V_z - L_z,\; 0 \rangle.
+V_\infty = \langle V_x - L_x,\; V_y - L_y,\; V_z - L_z,\; 0 \rangle \equiv \langle \hat{d}_x,\; \hat{d}_y,\; \hat{d}_z,\; 0 \rangle.
 \end{equation}
 Para testar a Hipótese~H5 (truncamento por extrusão curta), o sistema também suporta a extrusão finita parametrizada por comprimento $L_{\text{ext}}$:
 \begin{equation}
@@ -282,7 +282,7 @@ Na varredura de resolução (Tabela~\ref{tab:res}), o consumo de memória cresce
 
 Este trabalho demonstrou, por meio de um rasterizador validado em conformidade com o OpenGL~1.4, como limitações arquiteturais típicas de consoles antigos condicionam a qualidade e o custo das sombras volumétricas por stencil. Todas as cinco hipóteses experimentais (H1--H5) foram sustentadas pelos dados, evidenciando a necessidade conjunta do algoritmo \texttt{z-fail}, de operações circulares \texttt{INCR\_WRAP}/\texttt{DECR\_WRAP}, de precisão adequada no Z-buffer e de extrusão suficiente ou homogênea no infinito ($P_{\text{inf}}, w=0$).
 
-Como limitações declaradas do instrumento atual: (i) por ser implementado integralmente em Python/NumPy (\texttt{cpu-sw}), os tempos absolutos ($\approx 4$--$6{,}5\,\text{FPS}$ em $256\times 192$) refletem sobrecarga de laços por triângulo em CPU e servem apenas para comparações relativas entre configurações; e (ii) na ausência de rasterização homogênea 4D sem divisão perspectiva, quando vértices da tampa traseira no infinito ($w_e=0$, onde $z_{\text{clip}}=w_{\text{clip}}$ sob $P_{\text{inf}}$) apontam para trás da câmera ($w_{\text{clip}} \le 10^{-3}$), o sistema ancora a extrusão em distância finita longa ($L=500$) para evitar singularidade de $w_{\text{clip}}=0$ no recorte próximo. Como trabalhos futuros, planeja-se portar o núcleo de rasterização por funções de aresta para Cython/C ou GPU (OpenGL/ModernGL com \textit{two-sided stencil}) e investigar técnicas de descarte (\textit{culling}) de volumes para reduzir o consumo de \textit{fill rate}.
+Como limitações declaradas do instrumento: (i) no backend analítico em software (\texttt{cpu-sw}), os tempos absolutos ($\approx 4$--$6{,}5\,\text{FPS}$ em $256\times 192$) refletem o despacho por triângulo em CPU e servem para comparações relativas entre fases (enquanto os backends \texttt{cpu-fast} e \texttt{gpu-gl} aceleram a exploração interativa); e (ii) na ausência de rasterização homogênea 4D sem divisão perspectiva, quando vértices da tampa traseira no infinito ($w_e=0$, onde $z_{\text{clip}}=w_{\text{clip}}$ sob $P_{\text{inf}}$) apontam para trás da câmera ($w_{\text{clip}} \le 10^{-3}$), o sistema ancora a extrusão em distância finita longa ($L=500$) para evitar singularidade de $w_{\text{clip}}=0$ no recorte próximo. Como trabalhos futuros, planeja-se explorar extrusão de silhuetas diretamente em \textit{geometry/compute shaders} na GPU, múltiplas fontes de luz com atenuação penumbral e técnicas de descarte (\textit{scissor/depth bounds culling}) de volumes para reduzir o consumo de \textit{fill rate}.
 
 \begin{thebibliography}{1}
 

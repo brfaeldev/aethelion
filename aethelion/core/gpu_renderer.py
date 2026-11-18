@@ -64,7 +64,7 @@ class GLRenderer(BaseRenderer):
         )
 
         self._gl_textures: dict[str, moderngl.Texture] = {}
-        self._prop_vaos: list[tuple[Prop, moderngl.VertexArray, int]] = []
+        self._prop_vaos: list[tuple[Prop, moderngl.Buffer, moderngl.VertexArray, int]] = []
         self._fbo = None
         self._sv_fbo = None
         self._comp_fbo = None
@@ -133,8 +133,9 @@ class GLRenderer(BaseRenderer):
             self._gl_textures[name] = glt
 
     def _upload_scene(self) -> None:
-        for _, vao, _ in self._prop_vaos:
+        for _, vbo, vao, _ in self._prop_vaos:
             vao.release()
+            vbo.release()
         self._prop_vaos.clear()
         for prop in self.scene:
             pw, nw = self._world(prop)
@@ -144,7 +145,7 @@ class GLRenderer(BaseRenderer):
             vao = self.ctx.vertex_array(
                 self._prog_geom, [(vbo, "3f 3f", "in_pos", "in_norm")]
             )
-            self._prop_vaos.append((prop, vao, int(idx.size)))
+            self._prop_vaos.append((prop, vbo, vao, int(idx.size)))
 
     def sync(self) -> None:
         s = self.settings
@@ -204,9 +205,13 @@ class GLRenderer(BaseRenderer):
         self.ctx.clear(0.035, 0.040, 0.060, 0.0, depth=1.0)
 
         shading_id = {"gouraud": 0, "flat": 1, "unlit": 2}.get(s.shading, 0)
+        prec_id = {"float32": 0, "float16": 1, "fixed16_16": 2, "fixed12_4": 3}.get(
+            s.precision, 0
+        )
         self._prog_geom["u_vp"].write(vp_gl)
         self._prog_geom["u_res"].value = (float(s.width), float(s.height))
         self._prog_geom["u_vertex_snap"].value = int(s.vertex_snap)
+        self._prog_geom["u_precision"].value = prec_id
         self._prog_geom["u_light"].value = tuple(float(v) for v in self.light)
         self._prog_geom["u_ambient"].value = float(s.ambient)
         self._prog_geom["u_shading"].value = shading_id
@@ -214,7 +219,7 @@ class GLRenderer(BaseRenderer):
         self._prog_geom["u_depth_bits"].value = int(s.depth_bits)
         self._prog_geom["u_tex"].value = 0
 
-        for prop, vao, nverts in self._prop_vaos:
+        for prop, _, vao, nverts in self._prop_vaos:
             st.tris_scene += nverts // 3
             st.tris_scene_drawn += nverts // 3
             self._prog_geom["u_tint"].value = tuple(float(v) for v in prop.tint)
@@ -231,7 +236,7 @@ class GLRenderer(BaseRenderer):
         obs_overhead = 0.0
         if s.algorithm in ("zpass", "zfail"):
             batches, occluder_cache, st.ms_silhouette = self._build_cached_volumes(
-                vp, use_inf, homogeneous_4d=True
+                vp, use_inf
             )
             st.volumes_with_camera, obs_overhead = self._count_volumes_with_camera(
                 occluder_cache, ext_len
@@ -261,6 +266,9 @@ class GLRenderer(BaseRenderer):
             self._sv_vbo.write(raw_v)
 
             self._prog_sv["u_vp"].write(vp_gl)
+            self._prog_sv["u_res"].value = (float(s.width), float(s.height))
+            self._prog_sv["u_vertex_snap"].value = int(s.vertex_snap)
+            self._prog_sv["u_precision"].value = prec_id
             self._prog_sv["u_depth_clamp"].value = 1 if (zfail and s.depth_clamp) else 0
             self._prog_sv["u_depth_bits"].value = int(s.depth_bits)
 
@@ -302,9 +310,10 @@ class GLRenderer(BaseRenderer):
         self._prog_comp["u_dither"].value = 1 if s.dither else 0
         self._quad_vao.render(moderngl.TRIANGLE_STRIP)
 
-        raw = self._comp_fbo.read(components=3, dtype="f1")
-        img = np.frombuffer(raw, dtype=np.uint8).reshape(s.height, s.width, 3)
-        img = np.ascontiguousarray(img[::-1])
+        raw = self._comp_fbo.read(components=4, dtype="f1")
+        rgba = np.frombuffer(raw, dtype=np.uint8).reshape(s.height, s.width, 4)[::-1]
+        img = np.ascontiguousarray(rgba[..., :3])
+        self.visible_mask = np.ascontiguousarray(rgba[..., 3] > 127)
 
         # Atualiza contadores exatos de stencil (1..8 bits, saturado vs wrap)
         t_st_read0 = time.perf_counter()
@@ -345,11 +354,9 @@ class GLRenderer(BaseRenderer):
             wraw = self._fbo.read(attachment=2, components=4, dtype="f4")
             warr = np.frombuffer(wraw, dtype=F).reshape(s.height, s.width, 4)[::-1]
             self.gbuf = np.ascontiguousarray(warr[..., :3])
-            self.visible_mask = warr[..., 3] > 0.5
-            st.pixels_visible = int(np.count_nonzero(self.visible_mask))
-            st.pixels_shadow = int(np.count_nonzero(self.shadow_mask & self.visible_mask))
-        else:
-            st.pixels_shadow = int(np.count_nonzero(self.shadow_mask))
+            self.visible_mask = np.ascontiguousarray(warr[..., 3] > 0.5)
+        st.pixels_visible = int(np.count_nonzero(self.visible_mask))
+        st.pixels_shadow = int(np.count_nonzero(self.shadow_mask & self.visible_mask))
         obs_overhead += (time.perf_counter() - t_st_read0)
 
         st.ms_composite = (time.perf_counter() - tc) * 1000.0
@@ -381,6 +388,7 @@ class GLRenderer(BaseRenderer):
                 obj.release()
         for t in self._gl_textures.values():
             t.release()
-        for _, vao, _ in self._prop_vaos:
+        for _, vbo, vao, _ in self._prop_vaos:
             vao.release()
+            vbo.release()
         self.ctx.release()

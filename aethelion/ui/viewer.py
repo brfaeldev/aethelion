@@ -16,11 +16,10 @@ import time
 import numpy as np
 
 from ..core.backend import (
-    apply_preset,
     available_backends,
     create_renderer,
 )
-from ..core.settings import SVSettings
+from ..core.settings import SVSettings, apply_preset
 from ..evaluation.runner import ExperimentRunner
 from .camera import OrbitCamera
 from .panel import render_control_panel, render_status_bar
@@ -341,13 +340,17 @@ class Viewer:
     def _measure_now(self) -> None:
         from ..evaluation.truth import compare_masks, diff_image, evaluate_renderer_ground_truth
         t_m0 = time.perf_counter()
-        self.r.capture_gbuffer = True
-        self.r.render(self.t_scene)
-        ref, pred, vis = evaluate_renderer_ground_truth(self.r)
-        self.run.last_agreement = compare_masks(pred[vis], ref[vis])
-        self.run.last_diff = diff_image(pred, ref, vis)
-        if self.run.active:
-            self.run.note_manual("medicao manual contra a referencia")
+        prev_gbuf = self.r.capture_gbuffer
+        try:
+            self.r.capture_gbuffer = True
+            self.r.render(self.t_scene)
+            ref, pred, vis = evaluate_renderer_ground_truth(self.r)
+            self.run.last_agreement = compare_masks(pred[vis], ref[vis])
+            self.run.last_diff = diff_image(pred, ref, vis)
+            if self.run.active:
+                self.run.note_manual("medicao manual contra a referencia")
+        finally:
+            self.r.capture_gbuffer = prev_gbuf
         self.last += (time.perf_counter() - t_m0)
         self._mark_dirty()
 
@@ -371,7 +374,23 @@ class Viewer:
             self._last_img = img
             self._dirty = False
         elif not self.light_paused or self._dirty or self._last_img is None:
-            img = self.r.render(self.t_scene)
+            need_diff = (self.view_mode == 3)
+            prev_gbuf = self.r.capture_gbuffer
+            try:
+                if need_diff:
+                    self.r.capture_gbuffer = True
+                img = self.r.render(self.t_scene)
+                if need_diff:
+                    from ..evaluation.truth import (
+                        compare_masks,
+                        diff_image,
+                        evaluate_renderer_ground_truth,
+                    )
+                    ref, pred, vis = evaluate_renderer_ground_truth(self.r)
+                    self.run.last_agreement = compare_masks(pred[vis], ref[vis])
+                    self.run.last_diff = diff_image(pred, ref, vis)
+            finally:
+                self.r.capture_gbuffer = prev_gbuf
             self._last_img = img
             self._dirty = False
         else:
