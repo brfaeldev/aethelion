@@ -375,6 +375,7 @@ class ExperimentRunner:
 
         exp_name = "experimento_parcial.csv" if preserve_existing else "experimento.csv"
         res_name = "resumo_parcial.csv" if preserve_existing else "resumo.csv"
+        log_name = "eventos_parcial.log" if preserve_existing else "eventos.log"
 
         exp = os.path.join(self.outdir, exp_name)
         with open(exp, "w", newline="", encoding="utf-8") as f:
@@ -423,7 +424,7 @@ class ExperimentRunner:
                 wr.writerows(out)
             self.log(f"-> {res}")
 
-        logp = os.path.join(self.outdir, "eventos.log")
+        logp = os.path.join(self.outdir, log_name)
         with open(logp, "w", encoding="utf-8") as f:
             f.write("\n".join(self.events) + "\n")
         print(f"-> {logp}")

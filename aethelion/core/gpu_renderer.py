@@ -126,7 +126,7 @@ void main() {
 _SV_FRAG = """
 #version 330
 uniform int u_depth_bits;
-uniform float u_sign;
+uniform vec2 u_inc_dec;
 out vec4 out_col;
 void main() {
     if (u_depth_bits > 0) {
@@ -135,7 +135,7 @@ void main() {
     } else {
         gl_FragDepth = gl_FragCoord.z;
     }
-    out_col = vec4(u_sign, 0.0, 0.0, 1.0);
+    out_col = vec4(u_inc_dec, 0.0, 1.0);
 }
 """
 
@@ -156,6 +156,8 @@ uniform sampler2D u_lit;
 uniform sampler2D u_amb;
 uniform sampler2D u_shadow;
 uniform int u_use_stencil;
+uniform int u_stencil_bits;
+uniform int u_stencil_wrap;
 uniform int u_color_bits;
 uniform int u_dither;
 out vec4 out_col;
@@ -174,8 +176,20 @@ float bayer4(ivec2 p) {
 void main() {
     vec3 lit = texture(u_lit, v_uv).rgb;
     vec3 amb = texture(u_amb, v_uv).rgb;
-    float sv = (u_use_stencil != 0) ? texture(u_shadow, v_uv).r : 0.0;
-    vec3 col = (abs(sv) > 0.5) ? amb : lit;
+    int s_val = 0;
+    if (u_use_stencil != 0) {
+        vec2 sv = texture(u_shadow, v_uv).rg;
+        int n_inc = int(round(sv.r));
+        int n_dec = int(round(sv.g));
+        int max_val = (1 << u_stencil_bits) - 1;
+        if (u_stencil_wrap != 0) {
+            s_val = (n_inc - n_dec) & max_val;
+        } else {
+            int s1 = min(n_inc, max_val);
+            s_val = max(0, s1 - n_dec);
+        }
+    }
+    vec3 col = (s_val != 0) ? amb : lit;
     if (u_color_bits < 8) {
         float levels = float((1 << u_color_bits) - 1);
         if (u_dither != 0) {
@@ -264,20 +278,22 @@ class GLRenderer:
         self._tex_lit = self.ctx.texture((w, h), 4, dtype="f4")
         self._tex_amb = self.ctx.texture((w, h), 4, dtype="f4")
         self._tex_world = self.ctx.texture((w, h), 4, dtype="f4")
-        self._tex_shadow = self.ctx.texture((w, h), 1, dtype="f4")
+        self._tex_shadow = self.ctx.texture((w, h), 2, dtype="f4")
         self._tex_shadow.filter = (moderngl.NEAREST, moderngl.NEAREST)
-        self._tex_ds = self.ctx.depth_renderbuffer((w, h))
+        self._tex_ds = self.ctx.depth_texture((w, h))
         self._fbo = self.ctx.framebuffer(
             color_attachments=[self._tex_lit, self._tex_amb, self._tex_world],
             depth_attachment=self._tex_ds,
         )
+        self._fbo.depth_mask = True
         self._sv_fbo = self.ctx.framebuffer(
             color_attachments=[self._tex_shadow],
             depth_attachment=self._tex_ds,
         )
+        self._sv_fbo.depth_mask = False
         self._tex_out = self.ctx.texture((w, h), 4, dtype="f1")
         self._comp_fbo = self.ctx.framebuffer(color_attachments=[self._tex_out])
-        self._zero_shadow = b"\x00" * (w * h * 4)
+        self._zero_shadow = b"\x00" * (w * h * 8)
         self._alloc_size = (w, h)
         self.stencil.resize(w, h)
 
@@ -371,12 +387,12 @@ class GLRenderer:
         # ---- 1. Geometria em GPU ---- #
         tg = time.perf_counter()
         self._fbo.use()
+        self._fbo.depth_mask = True
         self.ctx.viewport = (0, 0, s.width, s.height)
         self.ctx.enable(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
         self.ctx.front_face = "ccw"
         self.ctx.cull_face = "back"
-        self.ctx.depth_mask = True
-        self.ctx.color_mask = (True, True, True, True)
+        self.ctx.depth_func = "<"
         self.ctx.clear(0.035, 0.040, 0.060, 0.0, depth=1.0)
 
         shading_id = {"gouraud": 0, "flat": 1, "unlit": 2}.get(s.shading, 0)
@@ -405,6 +421,7 @@ class GLRenderer:
         ts = time.perf_counter()
         ext_len = s.extrude_len if not use_inf else 40.0
         vol_tris = None
+        occluder_cache = []
         if s.algorithm in ("zpass", "zfail"):
             zfail = (s.algorithm == "zfail")
             cache_key = (
@@ -413,9 +430,10 @@ class GLRenderer:
                 len(self.scene), vp.tobytes() if use_inf else b"",
             )
             if self._vol_cache_key == cache_key and self._vol_cache_data is not None:
-                vol_tris = self._vol_cache_data
+                vol_tris, occluder_cache = self._vol_cache_data
             else:
                 batches = []
+                occluder_cache = []
                 for prop in self.scene:
                     if not prop.occluder:
                         continue
@@ -430,11 +448,14 @@ class GLRenderer:
                             prop.solid.edge_face, prop.solid.edge_opp,
                             self.light, length=(ext_len if inf_ok else 500.0),
                             infinite=inf_ok, caps=zfail)
+                        occluder_cache.append((prop, pw, None))
                     else:
                         sides, front, back = sv.build_volume_homogeneous(
                             pw, prop.solid.indices, prop.solid.dir_edges,
                             prop.solid.edge_face, prop.solid.edge_opp,
                             self.light, length=ext_len, infinite=False, caps=zfail)
+                        closed_fin = (sides[..., :3], front[..., :3], back[..., :3]) if zfail else None
+                        occluder_cache.append((prop, pw, closed_fin))
                     if zfail:
                         parts = [x for x in (sides, front, back) if x.shape[0]]
                         if parts:
@@ -443,13 +464,33 @@ class GLRenderer:
                         batches.append(sides)
                 vol_tris = np.concatenate(batches, axis=0) if batches else np.zeros((0, 3, 4), dtype=F)
                 self._vol_cache_key = cache_key
-                self._vol_cache_data = vol_tris
+                self._vol_cache_data = (vol_tris, occluder_cache)
         st.ms_silhouette = (time.perf_counter() - ts) * 1000.0
+
+        # Instrumentação observacional (volumes_with_camera) fora do cronômetro
+        t_obs0 = time.perf_counter()
+        vis_len = ext_len if ext_len > 0 else 40.0
+        for prop, pw, closed_fin in occluder_cache:
+            if closed_fin is not None:
+                sides3, front3, back3 = closed_fin
+            else:
+                sides3, front3, back3 = sv.build_volume(
+                    pw, prop.solid.indices, prop.solid.dir_edges,
+                    prop.solid.edge_face, prop.solid.edge_opp,
+                    self.light, vis_len, caps=True)
+            if sides3.shape[0] == 0 and front3.shape[0] == 0:
+                continue
+            closed3 = np.concatenate([x for x in (sides3, front3, back3)
+                                      if x.shape[0]], axis=0)
+            if sv.point_in_volume(self.camera_eye, closed3):
+                st.volumes_with_camera += 1
+        obs_overhead = time.perf_counter() - t_obs0
 
         # ---- 3. Passagem de Volumes / Contagem em GPU ---- #
         tr = time.perf_counter()
         self._tex_shadow.write(self._zero_shadow)
         self._sv_fbo.use()
+        self._sv_fbo.depth_mask = False
         use_sv = s.algorithm in ("zpass", "zfail") and vol_tris is not None and vol_tris.shape[0] > 0
         if use_sv:
             zfail = (s.algorithm == "zfail")
@@ -465,25 +506,23 @@ class GLRenderer:
             self._prog_sv["u_depth_bits"].value = int(s.depth_bits)
 
             self.ctx.enable(moderngl.DEPTH_TEST | moderngl.CULL_FACE | moderngl.BLEND)
-            self.ctx.depth_mask = False
             self.ctx.blend_func = (moderngl.ONE, moderngl.ONE)
             self.ctx.blend_equation = moderngl.FUNC_ADD
             self.ctx.depth_func = ">=" if zfail else "<"
 
-            # Sub-passagem 1: faces que incrementam (+1)
+            # Sub-passagem 1: faces que incrementam (+1 no canal R)
             self.ctx.cull_face = "front" if zfail else "back"
-            self._prog_sv["u_sign"].value = 1.0
+            self._prog_sv["u_inc_dec"].value = (1.0, 0.0)
             self._sv_vao.render(moderngl.TRIANGLES, vertices=vol_tris.shape[0] * 3)
 
-            # Sub-passagem 2: faces que decrementam (-1)
+            # Sub-passagem 2: faces que decrementam (+1 no canal G)
             self.ctx.cull_face = "back" if zfail else "front"
-            self._prog_sv["u_sign"].value = -1.0
+            self._prog_sv["u_inc_dec"].value = (0.0, 1.0)
             self._sv_vao.render(moderngl.TRIANGLES, vertices=vol_tris.shape[0] * 3)
 
             self.ctx.disable(moderngl.BLEND)
             self.ctx.depth_func = "<"
             self.ctx.cull_face = "back"
-            self.ctx.depth_mask = True
         self.ctx.finish()
         st.ms_stencil = (time.perf_counter() - tr) * 1000.0
 
@@ -498,6 +537,8 @@ class GLRenderer:
         self._prog_comp["u_amb"].value = 1
         self._prog_comp["u_shadow"].value = 2
         self._prog_comp["u_use_stencil"].value = 1 if use_sv else 0
+        self._prog_comp["u_stencil_bits"].value = int(np.clip(s.stencil_bits, 1, 8))
+        self._prog_comp["u_stencil_wrap"].value = 1 if s.stencil_wrap else 0
         self._prog_comp["u_color_bits"].value = int(s.color_bits)
         self._prog_comp["u_dither"].value = 1 if s.dither else 0
         self._quad_vao.render(moderngl.TRIANGLE_STRIP)
@@ -506,25 +547,63 @@ class GLRenderer:
         img = np.frombuffer(raw, dtype=np.uint8).reshape(s.height, s.width, 3)
         img = np.ascontiguousarray(img[::-1])  # OpenGL origem embaixo -> topo
 
+        # Atualiza contadores exatos de stencil (1..8 bits, saturado vs wrap)
+        t_st_read0 = time.perf_counter()
+        if use_sv:
+            sraw = self._sv_fbo.read(attachment=0, components=2, dtype="f4")
+            sarr = np.frombuffer(sraw, dtype=F).reshape(s.height, s.width, 2)[::-1]
+            n_inc = np.rint(sarr[..., 0]).astype(np.int32)
+            n_dec = np.rint(sarr[..., 1]).astype(np.int32)
+            max_val = int(self.stencil.max_val)
+            mod_val = max_val + 1
+            if s.stencil_wrap:
+                s1 = n_inc & max_val
+                s_final = (n_inc - n_dec) & max_val
+                wrap_inc = n_inc // mod_val
+                wrap_dec = np.where(n_dec > s1, 1 + (n_dec - s1 - 1) // mod_val, 0)
+                st.stencil_saturation = 0
+                st.stencil_wrap_events = int((wrap_inc + wrap_dec).sum())
+            else:
+                s1 = np.minimum(n_inc, max_val)
+                s_final = np.maximum(0, s1 - n_dec)
+                sat_inc = np.maximum(0, n_inc - max_val)
+                sat_dec = np.maximum(0, n_dec - s1)
+                st.stencil_saturation = int((sat_inc + sat_dec).sum())
+                st.stencil_wrap_events = 0
+            self.stencil.buf[:] = s_final
+            self.shadow_mask = (s_final != 0)
+            st.frag_stencil = int((n_inc + n_dec).sum())
+            st.stencil_max = int(s_final.max()) if s_final.size else 0
+        else:
+            self.stencil.buf[:] = 0
+            self.shadow_mask[:] = False
+            st.frag_stencil = 0
+            st.stencil_saturation = 0
+            st.stencil_wrap_events = 0
+            st.stencil_max = 0
+
         if self.capture_gbuffer:
             wraw = self._fbo.read(attachment=2, components=4, dtype="f4")
             warr = np.frombuffer(wraw, dtype=F).reshape(s.height, s.width, 4)[::-1]
             self.gbuf = np.ascontiguousarray(warr[..., :3])
             self.visible_mask = warr[..., 3] > 0.5
-            sraw = self._sv_fbo.read(attachment=0, components=1, dtype="f4")
-            sarr = np.frombuffer(sraw, dtype=F).reshape(s.height, s.width)[::-1]
-            self.shadow_mask = np.abs(sarr) > 0.5
-            self.stencil.buf[:] = np.clip(np.round(sarr), 0, self.stencil.max_val).astype(np.int32)
             st.pixels_visible = int(np.count_nonzero(self.visible_mask))
             st.pixels_shadow = int(np.count_nonzero(self.shadow_mask & self.visible_mask))
+        else:
+            st.pixels_shadow = int(np.count_nonzero(self.shadow_mask))
+        obs_overhead += (time.perf_counter() - t_st_read0)
 
         st.ms_composite = (time.perf_counter() - tc) * 1000.0
-        st.ms_total = max(0.001, (time.perf_counter() - t0) * 1000.0)
+        st.ms_total = max(0.001, (time.perf_counter() - t0 - obs_overhead) * 1000.0)
         SVRenderer._compute_memory_stats(self, st)
         self.stats = st
         return img
 
     def render_volume_overlay(self, base_img: np.ndarray | None = None) -> np.ndarray:
+        s = self.settings
+        d_raw = self._tex_ds.read()
+        d_01 = np.frombuffer(d_raw, dtype=F).reshape(s.height, s.width)[::-1]
+        self.depth = np.ascontiguousarray(d_01 * F(2.0) - F(1.0))
         return SVRenderer.render_volume_overlay(self, base_img)
 
     def ground_truth(self):

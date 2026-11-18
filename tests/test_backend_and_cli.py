@@ -51,6 +51,23 @@ def test_gpu_fallback_when_moderngl_missing():
             r = create_renderer("gpu-gl", SVSettings(width=64, height=48), fallback=True)
             assert r.backend_name == "cpu-fast"
             assert any("gpu-gl" in str(x.message) for x in w)
+    else:
+        from aethelion.evaluation.scenario import camera_for
+        # Verifica z-fail e saturação vs wrap de 3 bits no backend gpu-gl
+        s_sat = SVSettings(width=128, height=96, algorithm="zfail", stencil_bits=3, stencil_wrap=False)
+        r_gpu = create_renderer("gpu-gl", s_sat, fallback=False)
+        try:
+            r_gpu.camera_eye, r_gpu.camera_target = camera_for("grade", 0.5)
+            r_gpu.render(54.0)
+            assert r_gpu.stats.stencil_saturation > 0
+            assert r_gpu.stats.stencil_wrap_events == 0
+
+            r_gpu.settings.stencil_wrap = True
+            r_gpu.render(54.0)
+            assert r_gpu.stats.stencil_saturation == 0
+            assert r_gpu.stats.stencil_wrap_events > 0
+        finally:
+            r_gpu.release()
 
 
 def test_presets_and_cli_flags(tmp_path):
