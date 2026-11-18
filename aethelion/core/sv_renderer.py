@@ -51,13 +51,15 @@ class SVRenderer(BaseRenderer):
         self._alloc()
 
     def _alloc(self) -> None:
+        """Aloca os buffers por pixel do framebuffer em software."""
         s = self.settings
         shape = (s.height, s.width)
-        self.depth = np.ones(shape, dtype=F)
-        self.col_lit = np.zeros(shape + (3,), dtype=F)
-        self.col_amb = np.zeros(shape + (3,), dtype=F)
-        self.gbuf = np.zeros(shape + (3,), dtype=F)
+        self.depth = np.ones(shape, dtype=F)           # Z-buffer em NDC [-1, 1] (inicializado em +1 = far)
+        self.col_lit = np.zeros(shape + (3,), dtype=F)  # Cor com iluminação difusa + ambiente
+        self.col_amb = np.zeros(shape + (3,), dtype=F)  # Cor apenas com luz ambiente (usada onde stencil != 0)
+        self.gbuf = np.zeros(shape + (3,), dtype=F)     # Posição 3D no mundo (para ray casting de referência)
         self.stencil.resize(s.width, s.height)
+        # Pré-calcula o ladrilho da matriz de Bayer 4x4 no tamanho do framebuffer
         tile = np.tile(BAYER4, (s.height // 4 + 1, s.width // 4 + 1))
         self._bayer_tile = tile[:s.height, :s.width][..., None].astype(F)
 
@@ -130,11 +132,13 @@ class SVRenderer(BaseRenderer):
         return img
 
     def _resolve(self, buf: np.ndarray) -> np.ndarray:
+        """Aplica quantização de profundidade de cor (`color_bits`) e dithering ordenado Bayer 4x4."""
         s = self.settings
         img = np.clip(buf, 0.0, 1.0)
         if s.color_bits < 8:
             levels = F((1 << s.color_bits) - 1)
             if s.dither:
+                # Adiciona limiar espacial Bayer centrado em [-0.5/levels, +0.5/levels] antes do arredondamento
                 img = np.clip(img + (self._bayer_tile - F(0.5)) / levels, 0.0, 1.0)
             img = np.round(img * levels) / levels
         return (img * 255.0 + 0.5).astype(np.uint8)
@@ -152,6 +156,7 @@ class SVRenderer(BaseRenderer):
         tex = self.textures.get(prop.texture) if s.textured else None
         tint = np.array(prop.tint, dtype=F)
 
+        # Iluminação por vértice: difusa de Lambert + atenuação quadrática suave com a distância
         ldir = self.light[None, None, :] - tri_w
         ln = np.linalg.norm(ldir, axis=2, keepdims=True)
         ldir = ldir / np.maximum(ln, 1e-9)
@@ -163,6 +168,7 @@ class SVRenderer(BaseRenderer):
         elif s.shading == "flat":
             lit = np.repeat(lit.mean(axis=1, keepdims=True), 3, axis=1)
 
+        # Coordenadas UV planares derivadas da posição de mundo
         uv = np.stack(
             [(tri_w[..., 0] + tri_w[..., 2]) * F(0.35),
              (tri_w[..., 1] + tri_w[..., 2] * 0.15) * F(0.35)],
@@ -188,8 +194,10 @@ class SVRenderer(BaseRenderer):
             sy = (F(1.0) - (ndc[..., 1] * F(0.5) + F(0.5))) * F(H)
             if s.vertex_snap > 0:
                 g = F(s.vertex_snap)
-                sx = np.round(sx * g) / g
-                sy = np.round(sy * g) / g
+                sx = np.round(sx / g) * g
+                sy = np.round(sy / g) * g
+            # Como o eixo Y de tela cresce para baixo (oposto ao NDC), triângulos frontais
+            # anti-horários (CCW em NDC) possuem área 2D com sinal negativo (area < 0) em tela.
             area = ((sx[:, 1] - sx[:, 0]) * (sy[:, 2] - sy[:, 0])
                     - (sx[:, 2] - sx[:, 0]) * (sy[:, 1] - sy[:, 0]))
             keep_tri = (
@@ -226,12 +234,14 @@ class SVRenderer(BaseRenderer):
             return
         yy, xx, l0, l1, l2, _ = res
 
+        # Pesos baricêntricos corrigidos pela perspectiva (interpolação hiperbólica em 1/w)
         iw = l0 * invw[0] + l1 * invw[1] + l2 * invw[2]
         iw = np.maximum(iw, 1e-9)
         c0 = l0 * invw[0] / iw
         c1 = l1 * invw[1] / iw
         c2 = l2 * invw[2] / iw
 
+        # Profundidade z_ndc interpolada linearmente em tela e quantizada em N bits (H4)
         zz = l0 * z[0] + l1 * z[1] + l2 * z[2]
         if s.depth_bits > 0:
             zz = quantize_depth(zz, s.depth_bits)
@@ -308,8 +318,8 @@ class SVRenderer(BaseRenderer):
             sy = (F(1.0) - (ndc[..., 1] * F(0.5) + F(0.5))) * F(H)
             if s.vertex_snap > 0:
                 g = F(s.vertex_snap)
-                sx = np.round(sx * g) / g
-                sy = np.round(sy * g) / g
+                sx = np.round(sx / g) * g
+                sy = np.round(sy / g) * g
             area = ((sx[:, 1] - sx[:, 0]) * (sy[:, 2] - sy[:, 0])
                     - (sx[:, 2] - sx[:, 0]) * (sy[:, 1] - sy[:, 0]))
             keep_tri = (
@@ -340,6 +350,10 @@ class SVRenderer(BaseRenderer):
                 is_incr = (not front_facing) if zfail else front_facing
                 (incr_tris if is_incr else decr_tris).append((sx_c, sy_c, z_c))
 
+        # Separa os triângulos de volume em duas filas (incremento antes de decremento),
+        # reproduzindo a execução clássica em duas sub-passagens por orientação de face
+        # (cull back / cull front) do OpenGL 1.4 e tornando determinística a avaliação
+        # de saturação em contadores estreitos sem wrap (Hipótese H3).
         for sx_t, sy_t, z_t in incr_tris:
             self._raster_volume_tri(sx_t, sy_t, z_t, zfail, incr, decr, st)
         for sx_t, sy_t, z_t in decr_tris:
@@ -359,6 +373,8 @@ class SVRenderer(BaseRenderer):
         front_facing = area < 0.0
         zz = l0 * z[0] + l1 * z[1] + l2 * z[2]
 
+        # NV_depth_clamp: impede que fragmentos de volumes extrudados além do plano far
+        # (z_ndc > 1.0) sejam descartados na variante z-fail.
         if zfail and s.depth_clamp:
             zz = np.minimum(zz, F(1.0))
 
@@ -371,6 +387,11 @@ class SVRenderer(BaseRenderer):
         yy, xx, zz = yy[inside], xx[inside], zz[inside]
         depth_pass = zz < self.depth[yy, xx]
 
+        # Regra de contagem no stencil:
+        # - z-fail (Carmack's Reverse): opera quando o fragmento do volume está ATRÁS da superfície
+        #   visível (dpfail: zz >= depth), incrementando nas faces traseiras e decrementando nas frontais.
+        # - z-pass: opera quando o fragmento do volume está À FRENTE da superfície visível
+        #   (dppass: zz < depth), incrementando nas faces frontais e decrementando nas traseiras.
         if zfail:
             op = incr if not front_facing else decr
             self.stencil.write(yy, xx, depth_pass, op_dppass="KEEP", op_dpfail=op)

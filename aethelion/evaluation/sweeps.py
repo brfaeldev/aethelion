@@ -15,6 +15,10 @@ from .truth import compare_masks, evaluate_renderer_ground_truth
 
 def _eval_sv_config(s: SVSettings, label: str, frames: int = 5) -> dict:
     r = create_renderer(s.backend, s)
+    r.capture_gbuffer = False
+    eye0, tgt0 = camera_for("orbita", 0.0)
+    r.camera_eye, r.camera_target = eye0, tgt0
+    r.render(t=0.0)  # Quadro de warm-up para estabilizar caches e JIT
     r.capture_gbuffer = True
     ms_list, fps_list, f1_list, prec_list, rec_list = [], [], [], [], []
     for i in range(frames):

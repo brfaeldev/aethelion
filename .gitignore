@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .venv/
@@ -19,6 +23,14 @@ dist/
 # Experiment & conformance runtime outputs
 results/
 docs/*.pdf
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.bbl
+docs/*.blg
+docs/*.fls
+docs/*.fdb_latexmk
+docs/*.synctex.gz
 
 # IDE / Editor settings
 .vscode/

@@ -111,6 +111,10 @@ def render_volume_overlay(renderer, base_img: np.ndarray | None = None) -> np.nd
             ndc = apply_precision((c_safe[..., :3] / w_s[..., None]).astype(F), s.precision)
             sx_b = (ndc[..., 0] * F(0.5) + F(0.5)) * F(W)
             sy_b = (F(1.0) - (ndc[..., 1] * F(0.5) + F(0.5))) * F(H)
+            if s.vertex_snap > 0:
+                g = F(s.vertex_snap)
+                sx_b = np.round(sx_b / g) * g
+                sy_b = np.round(sy_b / g) * g
             keep_tri = (
                 np.all(np.isfinite(ndc), axis=(1, 2))
                 & (np.floor(sx_b.max(axis=1) - 0.5) >= 0)

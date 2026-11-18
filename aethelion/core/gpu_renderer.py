@@ -85,6 +85,7 @@ class GLRenderer(BaseRenderer):
         self.gbuf = np.zeros((self.settings.height, self.settings.width, 3), dtype=F)
 
     def _alloc(self) -> None:
+        """Aloca os 3 FBOs offscreen (geometria MRT, acumulação de stencil RG32F e composição)."""
         s = self.settings
         w, h = int(s.width), int(s.height)
         for obj in (
@@ -94,9 +95,14 @@ class GLRenderer(BaseRenderer):
         ):
             if obj is not None:
                 obj.release()
+        # FBO 1 (Geometria): grava cor iluminada, cor ambiente, posição 3D de mundo (G-buffer) e depth
         self._tex_lit = self.ctx.texture((w, h), 4, dtype="f4")
         self._tex_amb = self.ctx.texture((w, h), 4, dtype="f4")
         self._tex_world = self.ctx.texture((w, h), 4, dtype="f4")
+        # FBO 2 (Volumes de Sombra): acumula (n_inc, n_dec) em float32 RG32F via blending aditivo,
+        # compartilhando o mesmo depth attachment (_tex_ds) com depth_mask=False. Isso permite
+        # emular e instrumentar contadores de 1..8 bits (saturados ou wrap) sem depender de um
+        # stencil de hardware fixo em 8 bits.
         self._tex_shadow = self.ctx.texture((w, h), 2, dtype="f4")
         self._tex_shadow.filter = (moderngl.NEAREST, moderngl.NEAREST)
         self._tex_ds = self.ctx.depth_texture((w, h))
@@ -110,6 +116,7 @@ class GLRenderer(BaseRenderer):
             depth_attachment=self._tex_ds,
         )
         self._sv_fbo.depth_mask = False
+        # FBO 3 (Composição): resolve sombra, quantização de cor e dithering Bayer 4x4
         self._tex_out = self.ctx.texture((w, h), 4, dtype="f1")
         self._comp_fbo = self.ctx.framebuffer(color_attachments=[self._tex_out])
         self._zero_shadow = b"\x00" * (w * h * 8)
@@ -191,6 +198,7 @@ class GLRenderer(BaseRenderer):
         )
         vp = (proj @ view).astype(F)
         self._last_vp = vp
+        # Transpõe para column-major (convenção de matrizes uniformes em GLSL)
         vp_gl = vp.T.astype(F).tobytes()
 
         # ---- 1. Geometria em GPU ---- #
@@ -215,8 +223,10 @@ class GLRenderer(BaseRenderer):
         self._prog_geom["u_light"].value = tuple(float(v) for v in self.light)
         self._prog_geom["u_ambient"].value = float(s.ambient)
         self._prog_geom["u_shading"].value = shading_id
-        self._prog_geom["u_textured"].value = 1 if s.textured else 0
-        self._prog_geom["u_depth_bits"].value = int(s.depth_bits)
+        if "u_textured" in self._prog_geom:
+            self._prog_geom["u_textured"].value = 1 if s.textured else 0
+        if "u_depth_bits" in self._prog_geom:
+            self._prog_geom["u_depth_bits"].value = int(s.depth_bits)
         self._prog_geom["u_tex"].value = 0
 
         for prop, _, vao, nverts in self._prop_vaos:
@@ -310,12 +320,16 @@ class GLRenderer(BaseRenderer):
         self._prog_comp["u_dither"].value = 1 if s.dither else 0
         self._quad_vao.render(moderngl.TRIANGLE_STRIP)
 
+        # Leitura do FBO de composição: inverte o eixo Y ([::-1]) pois a origem de FBOs
+        # no OpenGL é no canto inferior-esquerdo, enquanto NumPy/Pygame usam topo-esquerdo.
         raw = self._comp_fbo.read(components=4, dtype="f1")
         rgba = np.frombuffer(raw, dtype=np.uint8).reshape(s.height, s.width, 4)[::-1]
         img = np.ascontiguousarray(rgba[..., :3])
         self.visible_mask = np.ascontiguousarray(rgba[..., 3] > 127)
 
-        # Atualiza contadores exatos de stencil (1..8 bits, saturado vs wrap)
+        # Atualiza contadores exatos de stencil (1..8 bits, saturado vs wrap) a partir
+        # dos canais acumulados (n_inc no canal R, n_dec no canal G). O tempo desta leitura
+        # de telemetria é isolado em `obs_overhead` para não inflar `ms_total`.
         t_st_read0 = time.perf_counter()
         if use_sv:
             sraw = self._sv_fbo.read(attachment=0, components=2, dtype="f4")
@@ -356,6 +370,7 @@ class GLRenderer(BaseRenderer):
             self.gbuf = np.ascontiguousarray(warr[..., :3])
             self.visible_mask = np.ascontiguousarray(warr[..., 3] > 0.5)
         st.pixels_visible = int(np.count_nonzero(self.visible_mask))
+        st.frag_scene = st.pixels_visible
         st.pixels_shadow = int(np.count_nonzero(self.shadow_mask & self.visible_mask))
         obs_overhead += (time.perf_counter() - t_st_read0)
 

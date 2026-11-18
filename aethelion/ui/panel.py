@@ -143,7 +143,7 @@ def render_control_panel(viewer, canvas: UIPanelCanvas, view_w: int, view_h: int
     )
     y = canvas.row_cycle(
         x, y, w, "vertex snap",
-        "OFF" if s.vertex_snap == 0 else f"1/{s.vertex_snap}px",
+        "OFF" if s.vertex_snap == 0 else f"{s.vertex_snap}px",
         lambda: viewer._cycle("vertex_snap", SNAP_CYCLE, "vertex_snap"),
     )
     y = canvas.row_cycle(

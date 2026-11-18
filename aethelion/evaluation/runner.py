@@ -56,6 +56,8 @@ class ExperimentRunner:
         self.frame = 0
         self.t0 = 0.0
         self.phase_t0 = 0.0
+        # Tempos de I/O (capturas PNG) e de ray casting (verdade de referência) acumulados
+        # para serem descontados do relógio de parede das fases.
         self.gt_overhead = 0.0
         self.phase_gt_overhead = 0.0
         self.virtual_elapsed = 0.0
@@ -77,7 +79,7 @@ class ExperimentRunner:
 
     @property
     def elapsed_effective(self) -> float:
-        if not self.active:
+        if not self.active and not self.finished:
             return 0.0
         if self.deterministic:
             return self.virtual_elapsed
@@ -148,13 +150,15 @@ class ExperimentRunner:
         self.r.camera_eye = eye
         self.r.camera_target = tgt
 
-        measure = elapsed >= self._next_measure
+        measure = phase_elapsed >= self._next_measure - 1e-9
         self.r.capture_gbuffer = measure
-        img = self.r.render(t_scene if t_scene is not None else elapsed)
+        img = self.r.render(
+            t_scene if t_scene is not None else (p.t_offset + phase_elapsed)
+        )
 
         row = self._row(elapsed, measure)
         if measure:
-            self._next_measure = elapsed + self.measure_every
+            self._next_measure = phase_elapsed + self.measure_every
         self.rows.append(row)
         self.frame += 1
 
@@ -182,6 +186,7 @@ class ExperimentRunner:
                 self.phase_t0 = time.perf_counter()
                 self.phase_gt_overhead = 0.0
                 self.virtual_phase_elapsed = 0.0
+                self._next_measure = 0.0
                 self._apply_phase()
         return img
 
@@ -248,6 +253,9 @@ class ExperimentRunner:
         self.write_outputs()
 
     def write_outputs(self) -> None:
+        # Se a execução foi interrompida antes de percorrer todas as fases e já existe um
+        # `resumo.csv` completo em disco, grava em `*_parcial.*` para não sobrescrever os
+        # dados completos da bateria experimental.
         phases_seen = {r["fase"] for r in self.rows}
         is_partial = len(phases_seen) < len(self.phases)
         res_default = os.path.join(self.outdir, "resumo.csv")

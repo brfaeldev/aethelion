@@ -56,11 +56,16 @@ class BaseRenderer:
         self.camera_target = np.array([0.0, 0.2, 0.0], dtype=F)
         self.light = self._light_fn(0.0)
         self.stats = SVStats()
+        # Caches por quadro/cena:
+        # - _soups: posições e normais transformadas para o espaço de mundo por id(Prop)
+        # - _vol_cache_*: volumes de sombra 4D extrudados (evita reconstruir se luz/cena não mudaram)
+        # - _cam_vol_cache_*: contagem de volumes que contêm a câmera (variável explicativa de H1)
         self._soups: dict[int, tuple[np.ndarray, np.ndarray]] = {}
         self._vol_cache_key: tuple | None = None
         self._vol_cache_data: tuple | None = None
         self._cam_vol_cache_key: tuple | None = None
         self._cam_vol_cache_val: int = 0
+        # Quando True, retém posições 3D por pixel visível no G-buffer para o ray casting de referência
         self.capture_gbuffer = False
         self._last_vp: np.ndarray = mu.identity()
         self.shadow_mask = np.zeros((self.settings.height, self.settings.width), bool)
@@ -78,7 +83,11 @@ class BaseRenderer:
         self._clear_scene_caches()
 
     def _world(self, prop: Prop) -> tuple[np.ndarray, np.ndarray]:
-        """Posições e normais em espaço de mundo (cache por instância)."""
+        """Posições e normais em espaço de mundo (cache por instância).
+
+        Normais são transformadas pela inversa-transposta 3x3 (`normal_matrix`)
+        para preservar ortogonalidade sob escalas não-uniformes nos modelos.
+        """
         key = id(prop)
         cached = self._soups.get(key)
         if cached is not None:
@@ -93,7 +102,14 @@ class BaseRenderer:
         return pw, nw
 
     def _compute_memory_stats(self, st: SVStats) -> None:
-        """Calcula o perfilamento de memória arquitetural e geométrica (em KB)."""
+        """Calcula o perfilamento de memória arquitetural e geométrica (em KB).
+
+        Separa o custo em duas categorias:
+        1. `mem_buffers_kb`: framebuffers por pixel (cor RGB, Z-buffer e stencil
+           dimensionados pelas larguras em bits configuradas) + texturas procedurais;
+        2. `mem_geometry_kb`: malhas da cena (posições 3D + normais 3D em float32)
+           + malhas de volumes de sombra extrudados (vértices 3D finitos ou 4D homogêneos).
+        """
         s = self.settings
         px = int(s.width) * int(s.height)
         color_bytes = px * 3.0 * (int(s.color_bits) / 8.0)
@@ -108,6 +124,7 @@ class BaseRenderer:
             (color_bytes + depth_bytes + stencil_bytes + tex_bytes) / 1024.0, 2
         )
 
+        # Vértices de volume ocupam 4 floats (x,y,z,w) na extrusão homogênea ou 3 floats na finita
         vol_coords = 4 if (s.infinite_extrude or s.extrude_len <= 0.0) else 3
         scene_bytes = st.tris_scene * 3 * 6 * 4
         vol_bytes = st.tris_volume * 3 * vol_coords * 4
@@ -123,6 +140,7 @@ class BaseRenderer:
             flat = world_tris.reshape(-1, 3)
             ph = np.concatenate([flat, np.ones((flat.shape[0], 1), dtype=F)], axis=1)
         clip = (vp @ ph.T).T.astype(F)
+        # Emula quantização dos registradores de transformação (float16, fixed16_16, fixed12_4)
         clip = apply_precision(clip, s.precision)
         return clip.reshape(world_tris.shape[0], 3, 4)
 
@@ -136,23 +154,27 @@ class BaseRenderer:
         ndc = apply_precision(ndc, s.precision)
         if not np.all(np.isfinite(ndc)):
             return None
+        # Mapeamento de NDC [-1, 1] para coordenadas de tela [0, W] x [0, H] (eixo Y invertido)
         sx = (ndc[:, 0] * F(0.5) + F(0.5)) * F(s.width)
         sy = (F(1.0) - (ndc[:, 1] * F(0.5) + F(0.5))) * F(s.height)
+        # Snap de vértices em grade inteira de pixels (emula ausência de subpixel no PS1/GTE)
         if s.vertex_snap > 0:
             g = F(s.vertex_snap)
-            sx = np.round(sx * g) / g
-            sy = np.round(sy * g) / g
+            sx = np.round(sx / g) * g
+            sy = np.round(sy / g) * g
         return sx, sy, ndc[:, 2].astype(F), (1.0 / w).astype(F)
 
     def _clip_parts(self, clip_tri: np.ndarray, attrs: list[np.ndarray]):
         """Recorte contra o plano próximo; devolve lista de (clip(3,4), attrs)."""
         w = clip_tri[:, 3]
         z = clip_tri[:, 2]
+        # Aceitação trivial: todos os vértices têm w > 0 e estão à frente do plano near (z/w >= -1)
         if np.all(w > 1e-5) and np.all((z + w) >= 0.0):
             return [(clip_tri, attrs)]
         poly, pattrs = clip_near(clip_tri, attrs)
         if poly is None:
             return []
+        # Triangulação em leque (triangle fan) do polígono convexo resultante do recorte
         out = []
         for k in range(1, poly.shape[0] - 1):
             sel = [0, k, k + 1]
@@ -170,6 +192,8 @@ class BaseRenderer:
         ext_len = s.extrude_len if not use_inf else 40.0
 
         ts = time.perf_counter()
+        # No modo infinito (use_inf=True), a verificação de singularidade w_clip > 1e-3
+        # depende da orientação da câmera, portanto `vp` entra na chave de cache.
         cache_key = (
             tuple(float(v) for v in self.light),
             s.algorithm,
@@ -189,6 +213,10 @@ class BaseRenderer:
                     continue
                 pw, _ = self._world(prop)
                 if use_inf:
+                    # Verifica se todas as direções de extrusão (V - L, w=0) têm w_clip > 0
+                    # (apontam para dentro do semiespaço frontal da câmera). Caso algum raio
+                    # aponte para trás da câmera, ancora em L=500 sob P_inf para evitar
+                    # divisão por w_clip <= 0 na tampa traseira sem rasterizador homogêneo 4D.
                     d_world = pw - self.light[None, :]
                     d_h = np.concatenate([d_world, np.zeros((pw.shape[0], 1), dtype=F)], axis=1)
                     w_inf_clip = (vp @ d_h.T).T[:, 3]
@@ -216,6 +244,8 @@ class BaseRenderer:
                     )
                     occluder_cache.append([prop, pw, closed_fin])
 
+                # z-fail exige volume fechado (laterais + tampas frontal e traseira);
+                # z-pass descarta as tampas e rasteriza apenas os quadriláteros laterais.
                 if zfail:
                     parts = [x for x in (sides, front, back) if x.shape[0]]
                     if parts:
@@ -234,7 +264,11 @@ class BaseRenderer:
         occluder_cache: list[list],
         ext_len: float,
     ) -> tuple[int, float]:
-        """Conta quantos volumes de sombra contêm a câmera (fora do cronômetro do algoritmo)."""
+        """Conta quantos volumes de sombra contêm a câmera (fora do cronômetro do algoritmo).
+
+        Retorna `(count, obs_overhead)` para que o tempo de CPU gasto nesta
+        verificação (variável explicativa de H1) seja descontado de `ms_total`.
+        """
         t_obs0 = time.perf_counter()
         vis_len = float(ext_len if ext_len > 0 else 40.0)
         cam_key = (
