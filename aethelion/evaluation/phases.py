@@ -17,41 +17,42 @@ class Phase:
     config: dict
     camera: str
     nota: str
+    t_offset: float = 0.0
 
 
 PHASES: list[Phase] = [
     Phase("A", "z-pass, câmera externa", "H2",
           12.0, {"algorithm": "zpass", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "orbita", "Linha de base: câmera nunca entra em um volume de sombra."),
+          "orbita", "Linha de base: câmera nunca entra em um volume de sombra.", 0.0),
     Phase("B", "z-fail, câmera externa", "H2",
           12.0, {"algorithm": "zfail", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "orbita", "Mesma trajetória de A: isola o custo das tampas."),
+          "orbita", "Mesma trajetória de A: isola o custo das tampas.", 0.0),
     Phase("C", "z-pass, câmera interna", "H1",
           12.0, {"algorithm": "zpass", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "travessia", "Trajetória atravessa volumes: artefato esperado."),
+          "travessia", "Trajetória atravessa volumes: artefato esperado.", 0.0),
     Phase("D", "z-fail, câmera interna", "H1",
           12.0, {"algorithm": "zfail", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "travessia", "Mesma trajetória de C: robustez esperada."),
+          "travessia", "Mesma trajetória de C: robustez esperada.", 0.0),
     Phase("E", "stencil 3 bits sem wrap", "H3",
           12.0, {"algorithm": "zfail", "stencil_bits": 3, "stencil_wrap": False,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "grade", "Zona de alta sobreposição: saturação esperada."),
+          "grade", "Zona de alta sobreposição: saturação esperada.", 48.0),
     Phase("F", "stencil 3 bits com wrap", "H3",
           12.0, {"algorithm": "zfail", "stencil_bits": 3, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 40.0, "infinite_extrude": False},
-          "grade", "Mesma cena de E com INCR_WRAP/DECR_WRAP."),
+          "grade", "Mesma cena de E com INCR_WRAP/DECR_WRAP.", 48.0),
     Phase("G", "profundidade de 12 bits", "H4",
           12.0, {"algorithm": "zfail", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 12, "extrude_len": 40.0, "infinite_extrude": False},
-          "rasante", "Buffer de profundidade estreito (quantizado por fragmento), vista rasante."),
+          "rasante", "Buffer de profundidade estreito (quantizado por fragmento), vista rasante.", 72.0),
     Phase("H", "extrusão curta", "H5",
           12.0, {"algorithm": "zfail", "stencil_bits": 8, "stencil_wrap": True,
                  "depth_bits": 0, "extrude_len": 3.5, "infinite_extrude": False},
-          "orbita", "Extrusão finita insuficiente vs. extrusão robusta: sombra truncada esperada."),
+          "orbita", "Extrusão finita insuficiente vs. extrusão robusta: sombra truncada esperada.", 0.0),
 ]
 
 HIPOTESES = {
@@ -85,14 +86,15 @@ def camera_for(kind: str, u: float) -> tuple[np.ndarray, np.ndarray]:
     tau = 2.0 * np.pi
     if kind == "orbita":
         ang = tau * u
-        eye = np.array([3.8 * np.sin(ang), 2.34 + 0.16 * np.sin(2 * ang),
+        eye = np.array([3.8 * np.sin(ang), 2.75 + 0.12 * np.sin(2 * ang),
                         5.6 * np.cos(ang)], dtype=F)
         tgt = np.array([0.0, -0.35, 0.0], dtype=F)
     elif kind == "travessia":
-        ang = tau * u
-        eye = np.array([3.35 * np.sin(ang), -0.15 + 0.25 * np.cos(2 * ang),
-                        3.8 * np.cos(ang) - 1.2], dtype=F)
-        tgt = np.array([0.0, -0.45, -0.5], dtype=F)
+        t_rel = 12.0 * u
+        eye = np.array([-0.75 * np.sin(0.21 * t_rel),
+                        -0.32 + 0.12 * np.cos(tau * u),
+                        0.6 - 1.25 * np.cos(0.17 * t_rel)], dtype=F)
+        tgt = np.array([0.25, -0.25, 1.5], dtype=F)
     elif kind == "grade":
         eye = np.array([-3.65 + 0.35 * np.sin(tau * u),
                         -0.10 + 0.15 * np.cos(tau * u),

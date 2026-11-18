@@ -23,7 +23,11 @@ def apply_precision(arr: np.ndarray, mode: str) -> np.ndarray:
 
 
 def quantize_depth(z: np.ndarray, bits: int) -> np.ndarray:
-    """Emula um buffer de profundidade de largura reduzida por fragmento (z em NDC [-1, 1])."""
+    """Emula um buffer de profundidade de largura reduzida por fragmento (z em NDC [-1, 1]).
+
+    Mapeia z_ndc de [-1, 1] para [0, 1], discretiza em (2^bits - 1) níveis inteiros
+    e reconverte para [-1, 1] antes da comparação de visibilidade/stencil.
+    """
     if bits <= 0 or bits >= 32:
         return np.asarray(z, dtype=F)
     levels = F((1 << int(bits)) - 1)

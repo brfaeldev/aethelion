@@ -115,6 +115,18 @@ class SVSettings:
         self.ambient = float(np.clip(float(self.ambient), 0.0, 1.0))
         self.texture_res = max(2, int(self.texture_res))
         self.vertex_snap = max(0, int(self.vertex_snap))
+        if self.algorithm not in ("none", "zpass", "zfail"):
+            self.algorithm = "zfail"
+        if self.precision not in ("float32", "float16", "fixed16_16", "fixed12_4"):
+            self.precision = "float32"
+        if self.shading not in ("gouraud", "flat", "unlit"):
+            self.shading = "gouraud"
+        if self.texture_filter not in ("nearest", "bilinear"):
+            self.texture_filter = "nearest"
+        if self.display_filter not in ("nearest", "bilinear"):
+            self.display_filter = "nearest"
+        if self.backend not in BACKENDS:
+            self.backend = BACKEND
         return self
 
     def to_dict(self) -> dict:

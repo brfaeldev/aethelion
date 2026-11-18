@@ -11,7 +11,11 @@ F = np.float32
 
 
 def weld(positions: np.ndarray, indices: np.ndarray, eps: float = 1e-4) -> tuple[np.ndarray, np.ndarray]:
-    """Solda vértices coincidentes. Sem isso as costuras quebram a adjacência."""
+    """Solda vértices coincidentes. Sem isso as costuras quebram a adjacência.
+
+    Quantiza as coordenadas em uma grade espacial de passo `eps`, unifica vértices
+    na mesma célula e descarta triângulos degenerados (com índices repetidos).
+    """
     key = np.round(positions.astype(np.float64) / eps).astype(np.int64)
     _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
     newpos = positions[first].astype(F)
@@ -27,6 +31,8 @@ def topology(indices: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     Retorna (dir_edges (3T,2), edge_face (3T,), edge_opp (3T,)).
     edge_opp[e] = -1 quando a aresta é de borda (malha aberta).
+    Numa malha 2-manifold fechada, cada par não-ordenado {u, v} aparece
+    exatamente duas vezes (como (u, v) e (v, u) em faces adjacentes).
     """
     t = int(indices.shape[0])
     de = np.concatenate([indices[:, [0, 1]], indices[:, [1, 2]],

@@ -43,20 +43,32 @@ def occluder_soup(props, world_fn: Callable | None = None) -> np.ndarray:
 
 def shadow_mask_raycast(points: np.ndarray, light: np.ndarray,
                         tris: np.ndarray, bias: float = 2.5e-3,
-                        chunk: int = 1024) -> np.ndarray:
+                        chunk: int = 512) -> np.ndarray:
     """True onde o ponto está em sombra. points: (N,3) em espaço de mundo."""
     n = points.shape[0]
     out = np.zeros(n, dtype=bool)
     if n == 0 or tris.shape[0] == 0:
         return out
 
+    # Agrupa pontos por células espaciais (x, z) para que cada bloco tenha
+    # uma AABB de feixe [pts -> light] estreita e maximize a poda geométrica.
+    if n > chunk:
+        qx = np.floor(points[:, 0] * 2.0).astype(np.int32)
+        qz = np.floor(points[:, 2] * 2.0).astype(np.int32)
+        order = np.lexsort((qz, qx))
+        pts_sorted = points[order]
+    else:
+        order = None
+        pts_sorted = points
+
     v0, v1, v2 = tris[:, 0], tris[:, 1], tris[:, 2]
     e1, e2 = v1 - v0, v2 - v0
     tri_min = tris.min(axis=1)
     tri_max = tris.max(axis=1)
 
+    res_sorted = np.zeros(n, dtype=bool)
     for start in range(0, n, chunk):
-        pts = points[start:start + chunk]
+        pts = pts_sorted[start:start + chunk]
         # Poda exata por AABB do feixe de segmentos [pts -> light]
         rmin = np.minimum(pts.min(axis=0), light) - F(1e-2)
         rmax = np.maximum(pts.max(axis=0), light) + F(1e-2)
@@ -92,8 +104,12 @@ def shadow_mask_raycast(points: np.ndarray, light: np.ndarray,
         t = np.einsum("tj,ptj->pt", e2_c, qv) * inv
         ok &= (t > 0.0) & (t < limit[:, None])
 
-        out[start:start + chunk] = ok.any(axis=1)
-    return out
+        res_sorted[start:start + chunk] = ok.any(axis=1)
+
+    if order is not None:
+        out[order] = res_sorted
+        return out
+    return res_sorted
 
 
 @dataclass

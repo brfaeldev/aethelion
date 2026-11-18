@@ -8,6 +8,10 @@ version = "2.2.0"
 description = "Estudo experimental de sombras volumétricas por stencil (Eixo 7 — Arquitetura de Consoles Antigos)"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "Bruno Rafael Barbosa" },
+    { name = "João Pedro Magrin" },
+]
 dependencies = [
     "numpy>=1.21",
     "pillow>=9.0",

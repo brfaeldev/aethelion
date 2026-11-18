@@ -66,9 +66,13 @@ def test_gpu_fallback_when_moderngl_missing():
             assert r_gpu.stats.stencil_wrap_events == 0
 
             r_gpu.settings.stencil_wrap = True
+            r_gpu.settings.depth_bits = 32
+            r_gpu.settings.color_bits = 5
+            r_gpu.settings.dither = True
             r_gpu.render(54.0)
             assert r_gpu.stats.stencil_saturation == 0
             assert r_gpu.stats.stencil_wrap_events > 0
+            assert r_gpu.stats.frag_scene == r_gpu.stats.pixels_visible
         finally:
             r_gpu.release()
 
@@ -145,22 +149,31 @@ def test_settings_validation_and_experiment_runner_e2e(tmp_path, unit_box):
     from aethelion.evaluation.report import write_report
     from aethelion.evaluation.runner import ExperimentRunner
 
-    # 1. Validação defensiva de limites em SVSettings
+    # 1. Validação defensiva de limites e enums em SVSettings
     s_bad = SVSettings(
         width=2, height=-10, stencil_bits=99, color_bits=0,
         depth_bits=-4, near=-1.0, far=0.0, fov=500.0, detail=99.0, ambient=5.0,
+        algorithm="invalido", precision="fp8", shading="phong",
+        texture_filter="trilinear", display_filter="lanczos", backend="vulkan",
     )
     assert s_bad.width == 16 and s_bad.height == 16
     assert s_bad.stencil_bits == 8 and s_bad.color_bits == 1
     assert s_bad.depth_bits == 0
     assert s_bad.near >= 1e-3 and s_bad.far > s_bad.near
     assert s_bad.fov == 160.0 and s_bad.detail == 4.0 and s_bad.ambient == 1.0
+    assert s_bad.algorithm == "zfail"
+    assert s_bad.precision == "float32"
+    assert s_bad.shading == "gouraud"
+    assert s_bad.texture_filter == "nearest"
+    assert s_bad.display_filter == "nearest"
+    assert s_bad.backend == "cpu-sw"
 
-    # 2. Execução ponta a ponta de ExperimentRunner + write_report
+    # 2. Execução ponta a ponta de ExperimentRunner + plots + write_report
+    from aethelion.evaluation.plots import plots
     custom_scene = lambda detail: [Prop(unit_box, name="cubo_teste")]
     custom_light = lambda t: np.array([0.0, 3.0, 2.0], dtype=np.float32)
     r = SVRenderer(
-        SVSettings(width=48, height=36),
+        SVSettings(width=48, height=36, color_bits=5, dither=True, precision="fixed16_16"),
         scene_builder=custom_scene,
         light_fn=custom_light,
     )
@@ -177,9 +190,14 @@ def test_settings_validation_and_experiment_runner_e2e(tmp_path, unit_box):
         runner.step()
 
     assert runner.finished
+    assert abs(runner.elapsed_effective - 2.0) < 1e-6
     assert (tmp_path / "experimento.csv").exists()
     assert (tmp_path / "resumo.csv").exists()
     assert (tmp_path / "eventos.log").exists()
+    log_txt = (tmp_path / "eventos.log").read_text(encoding="utf-8")
+    assert "[t=   2.00s] FIM" in log_txt
+    made_plots = plots(str(tmp_path))
+    assert len(made_plots) >= 4
     rep_path = write_report(str(tmp_path))
     assert (tmp_path / "RELATORIO.md").exists()
     assert "Relatório Experimental" in open(rep_path, encoding="utf-8").read()
