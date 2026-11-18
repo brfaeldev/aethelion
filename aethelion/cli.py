@@ -15,7 +15,7 @@ import argparse
 import json
 
 from .core.backend import BACKENDS, PRESETS, apply_preset
-from .core.sv_renderer import SVSettings
+from .core.settings import SVSettings
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if res["passed"] == res["total"] else 2
 
     if args.sv_sweeps:
-        from .evaluation.scenario import run_sv_sweeps
+        from .evaluation.sweeps import run_sv_sweeps
         run_sv_sweeps(settings_from(args), args.outdir)
         return 0
 
@@ -178,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.experiment:
         from .evaluation import conformance, report
-        from .evaluation.scenario import run_headless, run_sv_sweeps
+        from .evaluation.runner import run_headless
+        from .evaluation.sweeps import run_sv_sweeps
         print("=== Conformidade do instrumento ===")
         conformance.run(args.outdir)
         print("\n=== Roteiro experimental (8 fases) ===")

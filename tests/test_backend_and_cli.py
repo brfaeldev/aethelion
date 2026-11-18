@@ -12,7 +12,7 @@ from aethelion.core.backend import (
     available_backends,
     create_renderer,
 )
-from aethelion.core.sv_renderer import SVSettings
+from aethelion.core.settings import SVSettings
 
 
 def test_cpu_sw_and_cpu_fast_equivalence():
@@ -31,9 +31,8 @@ def test_cpu_sw_and_cpu_fast_equivalence():
     assert np.array_equal(r_sw.shadow_mask, r_fast.shadow_mask)
 
 
-def test_volume_cache_is_exact_across_frames():
-    s = SVSettings(width=96, height=72, detail=0.6)
-    r = create_renderer("cpu-sw", s)
+def test_volume_cache_is_exact_across_frames(small_settings):
+    r = create_renderer("cpu-sw", small_settings)
     img1 = r.render(0.25)
     mask1 = r.shadow_mask.copy()
     img2 = r.render(0.25)
@@ -52,7 +51,7 @@ def test_gpu_fallback_when_moderngl_missing():
             assert r.backend_name == "cpu-fast"
             assert any("gpu-gl" in str(x.message) for x in w)
     else:
-        from aethelion.evaluation.scenario import camera_for
+        from aethelion.evaluation.phases import camera_for
         # Verifica z-fail e saturação vs wrap de 3 bits no backend gpu-gl
         s_sat = SVSettings(width=128, height=96, algorithm="zfail", stencil_bits=3, stencil_wrap=False)
         r_gpu = create_renderer("gpu-gl", s_sat, fallback=False)
@@ -101,3 +100,36 @@ def test_presets_and_cli_flags(tmp_path):
     assert s.far == 80.0
     assert s.display_filter == "bilinear"
     assert s.backend == "cpu-fast"
+
+
+def test_componentized_modules_and_custom_scene_injection(unit_box):
+    from aethelion.core.base_renderer import BaseRenderer
+    from aethelion.core.mesh import Prop
+    from aethelion.core.sv_renderer import SVRenderer
+    from aethelion.ui.camera import OrbitCamera
+    from aethelion.ui.widgets import UIPanelCanvas
+
+    # 1. Renderizador aceita cena customizada injetada sem depender de crypt
+    custom_scene = lambda detail: [Prop(unit_box, name="cubo_unico")]
+    custom_light = lambda t: np.array([0.0, 3.0, 2.0], dtype=np.float32)
+    r = SVRenderer(SVSettings(width=64, height=48), scene_builder=custom_scene, light_fn=custom_light)
+    assert isinstance(r, BaseRenderer)
+    img = r.render(0.0)
+    assert img.shape == (48, 64, 3)
+    assert r.stats.tris_scene == 12
+
+    # 2. OrbitCamera independente de Pygame window
+    cam = OrbitCamera(yaw=0.0, pitch=0.0, dist=5.0)
+    cam.orbit(100.0, 50.0)
+    cam.zoom(2.0)
+    cam.apply_to(r)
+    assert np.allclose(r.camera_eye, cam.eye)
+
+    # 3. UIPanelCanvas gerencia scroll
+    canvas = UIPanelCanvas()
+    canvas.content_h = 800
+    canvas.handle_wheel(-2, view_h=400)
+    assert 0 < canvas.scroll <= 400
+    canvas.clamp_scroll(view_h=900)
+    assert canvas.scroll == 0
+

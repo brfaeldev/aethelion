@@ -1,16 +1,11 @@
-"""Metodologia experimental, verdade de referência, conformidade e relatórios."""
-from .conformance import TESTS, run as run_conformance
-from .report import build as build_report, plots, write_report
-from .scenario import (
-    CSV_FIELDS,
-    HIPOTESES,
-    PHASES,
-    ExperimentRunner,
-    Phase,
-    camera_for,
-    run_headless,
-    run_sv_sweeps,
-)
+"""Subpacote de avaliação experimental: conformidade, ray casting, fases, varreduras e relatórios."""
+from . import conformance, phases, plots, report, runner, sweeps, truth
+from .conformance import TESTS as CONFORMANCE_TESTS, run as run_conformance
+from .phases import CSV_FIELDS, HIPOTESES, PHASES, Phase, camera_for
+from .plots import plots as build_plots
+from .report import build as build_report, write_report
+from .runner import ExperimentRunner, run_headless
+from .sweeps import run_sv_sweeps
 from .truth import (
     Agreement,
     compare_masks,
@@ -21,14 +16,21 @@ from .truth import (
 )
 
 __all__ = [
+    "conformance",
+    "truth",
+    "phases",
+    "runner",
+    "sweeps",
+    "plots",
+    "report",
+    "CONFORMANCE_TESTS",
+    "run_conformance",
     "Agreement",
+    "compare_masks",
+    "diff_image",
     "occluder_soup",
     "shadow_mask_raycast",
     "evaluate_renderer_ground_truth",
-    "compare_masks",
-    "diff_image",
-    "TESTS",
-    "run_conformance",
     "Phase",
     "PHASES",
     "HIPOTESES",
@@ -37,7 +39,7 @@ __all__ = [
     "ExperimentRunner",
     "run_headless",
     "run_sv_sweeps",
-    "plots",
+    "build_plots",
     "write_report",
     "build_report",
 ]

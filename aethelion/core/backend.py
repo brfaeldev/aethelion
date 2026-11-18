@@ -1,4 +1,4 @@
-"""Camada de abstração de backends (CPU e GPU) e presets de desempenho/qualidade."""
+"""Camada de abstração de backends (CPU e GPU) e fábrica unificada de renderizadores."""
 from __future__ import annotations
 
 import warnings
@@ -6,56 +6,17 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from .sv_renderer import FastCPURenderer, SVRenderer, SVSettings, SVStats
+from .settings import BACKENDS, PRESETS, SVSettings, SVStats, apply_preset
+from .sv_renderer import FastCPURenderer, SVRenderer
 
-BACKENDS: tuple[str, ...] = ("cpu-sw", "cpu-fast", "gpu-gl")
-
-PRESETS: dict[str, dict] = {
-    "fast": {
-        "width": 160,
-        "height": 120,
-        "detail": 0.6,
-        "textured": True,
-        "shading": "flat",
-        "texture_filter": "nearest",
-        "color_bits": 8,
-        "dither": False,
-        "vertex_snap": 0,
-    },
-    "balanced": {
-        "width": 256,
-        "height": 192,
-        "detail": 1.0,
-        "textured": True,
-        "shading": "gouraud",
-        "texture_filter": "nearest",
-        "color_bits": 8,
-        "dither": False,
-        "vertex_snap": 0,
-    },
-    "retro-ps1": {
-        "width": 320,
-        "height": 240,
-        "precision": "fixed12_4",
-        "vertex_snap": 1,
-        "color_bits": 5,
-        "dither": True,
-        "texture_filter": "nearest",
-        "textured": True,
-        "shading": "gouraud",
-    },
-    "high": {
-        "width": 512,
-        "height": 384,
-        "detail": 1.5,
-        "texture_filter": "bilinear",
-        "color_bits": 8,
-        "dither": False,
-        "vertex_snap": 0,
-        "textured": True,
-        "shading": "gouraud",
-    },
-}
+__all__ = [
+    "BACKENDS",
+    "PRESETS",
+    "RendererProtocol",
+    "available_backends",
+    "apply_preset",
+    "create_renderer",
+]
 
 
 @runtime_checkable
@@ -86,17 +47,6 @@ def available_backends() -> list[str]:
     except Exception:
         pass
     return avail
-
-
-def apply_preset(settings: SVSettings, preset_name: str) -> SVSettings:
-    """Aplica um perfil de desempenho/qualidade em `SVSettings`."""
-    if preset_name not in PRESETS:
-        raise ValueError(
-            f"Preset desconhecido '{preset_name}'. Opções: {list(PRESETS)}"
-        )
-    for k, v in PRESETS[preset_name].items():
-        setattr(settings, k, v)
-    return settings
 
 
 def create_renderer(

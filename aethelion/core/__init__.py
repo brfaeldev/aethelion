@@ -1,4 +1,14 @@
 """Núcleo do motor gráfico e estágios do pipeline de sombras volumétricas."""
+from .backend import (
+    BACKENDS,
+    PRESETS,
+    RendererProtocol,
+    apply_preset,
+    available_backends,
+    create_renderer,
+)
+from .base_renderer import BaseRenderer
+from .clipping import clip_near
 from .mathutil import (
     F,
     identity,
@@ -13,11 +23,11 @@ from .mathutil import (
     scale,
     translate,
 )
+from .mesh import Prop, Solid, make_solid, topology, vertex_normals, weld
+from .overlay import draw_line_2d, render_volume_overlay
 from .precision import apply_precision, quantize_depth
-from .clipping import clip_near
-from .raster import scan_triangle
-from .stencil import FUNCS, OPS, StencilBuffer, apply_op, compare
-from .texture import PATTERNS, Texture, make_textures
+from .raster import scan_triangle, scan_triangle_fast
+from .settings import BACKEND, BAYER4, SVSettings, SVStats
 from .shadow import (
     build_volume,
     build_volume_homogeneous,
@@ -25,15 +35,9 @@ from .shadow import (
     face_facing,
     point_in_volume,
 )
-from .sv_renderer import BACKEND, FastCPURenderer, SVRenderer, SVSettings, SVStats
-from .backend import (
-    BACKENDS,
-    PRESETS,
-    RendererProtocol,
-    apply_preset,
-    available_backends,
-    create_renderer,
-)
+from .stencil import FUNCS, OPS, StencilBuffer, apply_op, compare
+from .sv_renderer import FastCPURenderer, SVRenderer
+from .texture import PATTERNS, Texture, make_textures
 
 __all__ = [
     "F",
@@ -50,8 +54,15 @@ __all__ = [
     "perspective_infinite",
     "apply_precision",
     "quantize_depth",
+    "Solid",
+    "Prop",
+    "weld",
+    "topology",
+    "vertex_normals",
+    "make_solid",
     "clip_near",
     "scan_triangle",
+    "scan_triangle_fast",
     "FUNCS",
     "OPS",
     "StencilBuffer",
@@ -65,8 +76,11 @@ __all__ = [
     "build_volume_homogeneous",
     "extract_silhouette_segments",
     "point_in_volume",
+    "draw_line_2d",
+    "render_volume_overlay",
     "BACKEND",
     "BACKENDS",
+    "BAYER4",
     "PRESETS",
     "RendererProtocol",
     "available_backends",
@@ -74,6 +88,7 @@ __all__ = [
     "create_renderer",
     "SVSettings",
     "SVStats",
+    "BaseRenderer",
     "SVRenderer",
     "FastCPURenderer",
 ]
