@@ -20,17 +20,9 @@ dist/
 *.egg-info/
 .eggs/
 
-# Experiment & conformance runtime outputs
+# Experiment, conformance & local documentation outputs
 results/
-docs/*.pdf
-docs/*.aux
-docs/*.log
-docs/*.out
-docs/*.bbl
-docs/*.blg
-docs/*.fls
-docs/*.fdb_latexmk
-docs/*.synctex.gz
+docs/
 
 # IDE / Editor settings
 .vscode/
