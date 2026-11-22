@@ -1,4 +1,11 @@
-"""Geração de gráficos (Matplotlib) a partir dos CSVs de fases e varreduras."""
+"""
+Gerador de Gráficos Analíticos (plots.py)
+
+Lê as tabelas consolidadas (`resumo.csv` e `varredura_sv_*.csv`) e produz
+até 8 gráficos em PNG via Matplotlib, cobrindo custo por estágio do pipeline,
+concordância com ray casting (Precisão, Revocação, F1), carga geométrica vs.
+preenchimento, saturação vs. wrap de stencil, memória e varreduras paramétricas.
+"""
 from __future__ import annotations
 
 import csv

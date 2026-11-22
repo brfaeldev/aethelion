@@ -1,13 +1,10 @@
-"""Interface de linha de comando (CLI) do pacote Aethelion.
+"""
+Interface de Linha de Comando (cli.py)
 
-Modos:
-    python -m aethelion                 # aplicação de tela única (pygame)
-    python -m aethelion --fullscreen    # abre diretamente em tela cheia
-    python -m aethelion --experiment    # roteiro completo + varreduras + relatório
-    python -m aethelion --conformance   # apenas a suíte de conformidade
-    python -m aethelion --sv-sweeps     # varreduras de resolução, complexidade e P_inf
-    python -m aethelion --report        # gráficos + RELATORIO.md dos CSVs
-    python -m aethelion --help
+Analisa argumentos de execução, arquivos de configuração JSON e presets de
+desempenho/qualidade (`SVSettings`), orquestrando os modos de operação do
+sistema: visualizador interativo em Pygame, suíte de conformidade OpenGL 1.4,
+roteiro experimental de 8 fases, varreduras paramétricas e geração de relatórios.
 """
 from __future__ import annotations
 

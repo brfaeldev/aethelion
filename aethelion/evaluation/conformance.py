@@ -1,15 +1,10 @@
-"""Suíte de conformidade do estágio de stencil e da regra de preenchimento.
+"""
+Suíte de Conformidade do Instrumento (conformance.py)
 
-Verifica que o emulador em software reproduz fielmente a semântica especificada
-no padrão OpenGL 1.4 (Segal & Akeley, 2002, Seção 4.1.5 — Stencil Test, e
-Seção 3.5 — Polygon Rasterization) antes de utilizá-lo como instrumento de
-medida experimental para algoritmos baseados em silhuetas e contadores de
-stencil (Everitt & Kilgard, 2002; Li, Magnor & Seidel, WSCG 2003).
-
-Escopo testado: oito funções de comparação, oito operações (incluindo saturação
-versus transbordo circular INCR_WRAP/DECR_WRAP promovidos ao núcleo no OpenGL 1.4),
-máscaras de comparação e escrita, ordem dos testes, exclusividade da regra top-left
-sobre arestas compartilhadas e recorte homogêneo no plano próximo.
+Verifica através de 24 testes determinísticos se o emulador de stencil,
+a regra de preenchimento top-left e o recorte homogêneo no plano próximo
+reproduzem fielmente a semântica da especificação OpenGL 1.4 (Seções 2.11,
+3.5 e 4.1.5), exportando o laudo de validação para `conformidade.csv`.
 """
 from __future__ import annotations
 

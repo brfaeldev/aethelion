@@ -1,4 +1,11 @@
-"""Executor do roteiro experimental de 8 fases (modo interativo ou headless)."""
+"""
+Executor do Protocolo Experimental de 8 Fases (runner.py)
+
+Conduz a execução sequencial das fases A–H (em modo headless ou integrado à
+GUI), gerenciando o relógio efetivo com desconto do overhead de ray casting
+e I/O, capturando imagens representativas por fase e gravando `experimento.csv`,
+`resumo.csv` (com medianas, IQR, médias e desvios-padrão) e `eventos.log`.
+"""
 from __future__ import annotations
 
 import csv

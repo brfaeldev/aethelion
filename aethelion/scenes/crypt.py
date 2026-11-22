@@ -1,10 +1,11 @@
-"""Montagem da cena de ensaio: uma cripta procedural (two-manifold).
+"""
+Cena Procedural da Cripta (crypt.py)
 
-A cena foi construída para isolar as condições críticas do algoritmo de sombras:
-* colunas cilíndricas -> silhuetas longas e curvas;
-* grade de barras finas -> alta sobreposição de volumes no mesmo pixel (H3);
-* arcos e corredor -> travessia da câmera por volumes de sombra (H1);
-* chão e paredes amplos -> receptores de sombra de grande área (H2, H4, H5).
+Constrói a cena de ensaio composta por malhas two-manifold fechadas e
+orientadas (colunas cilíndricas com base e capitel, arquitraves, grade de
+11 barras finas, estátua central com halo e planos receptores) projetada
+para estressar silhuetas curvas, travessia de câmera (H1) e alta sobreposição
+de volumes no stencil (H3).
 """
 from __future__ import annotations
 

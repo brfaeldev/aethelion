@@ -1,8 +1,10 @@
-"""Texturas procedurais com resolução e profundidade de cor controláveis.
+"""
+Gerador e Amostrador de Texturas Procedurais (texture.py)
 
-A resolução de textura é um dos parâmetros experimentais: texturas pequenas
-(32x32, 64x64) reproduzem a aparência de memória gráfica restrita típica de
-consoles antigos.
+Sintetiza texturas RGB determinísticas (`checker`, `bricks`, `gradient`,
+`noise`) com resolução e profundidade de cor configuráveis para emular
+limites de memória de vídeo de consoles antigos, oferecendo amostragem UV
+com repetição (wrap) nos modos vizinho mais próximo (`nearest`) e `bilinear`.
 """
 from __future__ import annotations
 

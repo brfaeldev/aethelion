@@ -1,4 +1,11 @@
-"""Emulação controlada de precisão aritmética e largura de Z-buffer."""
+"""
+Emulador de Precisão Aritmética e Quantização de Z-Buffer (precision.py)
+
+Simula restrições numéricas de arquiteturas gráficas clássicas nos estágios
+de transformação e rasterização, suportando ponto flutuante (`float32`,
+`float16`), ponto fixo (`fixed16_16`, `fixed12_4` estilo PS1/GTE) e
+discretização configurável por fragmento da profundidade (`quantize_depth`).
+"""
 from __future__ import annotations
 
 import numpy as np

@@ -1,4 +1,11 @@
-"""Componentes reutilizáveis de UI imediata (botões, linhas de ciclo/passo, scroll e hitboxes)."""
+"""
+Componentes de Interface Imediata e Gerenciador de Hitboxes (widgets.py)
+
+Implementa o contêiner `UIPanelCanvas` responsável por desenhar textos, botões
+com efeito hover, seletores cíclicos (`row_cycle`) e controles incrementais
+(`row_step`), além de gerenciar a rolagem vertical (scroll) e o despacho de
+cliques de mouse no painel lateral.
+"""
 from __future__ import annotations
 
 from typing import Callable

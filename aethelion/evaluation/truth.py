@@ -1,12 +1,10 @@
-"""Verdade de referência por ray casting e métricas de concordância.
+"""
+Verdade de Referência por Ray Casting e Métricas de Concordância (truth.py)
 
-A referência NÃO usa stencil nem volumes: para cada pixel visível, lança-se um
-raio do ponto de superfície até a fonte de luz e testa-se oclusão contra a
-geometria da cena. É um método independente do algoritmo em avaliação, o que é
-a condição para que precisão, revocação e F1 tenham significado.
-
-Custo elevado: executa apenas nos quadros de medição e seu tempo de CPU é
-descontado do relógio de duração das fases para não interferir na amostragem.
+Calcula a máscara de sombra exata por pixel visível lançando raios das posições
+3D do G-buffer até a luz pontual com poda por AABB e interseção vetorizada de
+Möller-Trumbore. Fornece um oráculo independente do stencil para mensurar
+Precisão, Revocação, F1, taxa de erro e mapa visual de diferenças em falsa cor.
 """
 from __future__ import annotations
 

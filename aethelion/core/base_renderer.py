@@ -1,4 +1,11 @@
-"""Classe base compartilhada pelos renderizadores de CPU e GPU."""
+"""
+Renderizador Base e Gerenciador de Cena (base_renderer.py)
+
+Implementa a infraestrutura compartilhada pelos backends de CPU e GPU,
+incluindo transformação para espaço de mundo com matriz normal inversa-transposta,
+projeção com quantização numérica, recorte no plano próximo, cache de volumes de
+sombra extrudados, contagem de volumes que contêm a câmera e perfilamento de memória.
+"""
 from __future__ import annotations
 
 import time

@@ -1,10 +1,10 @@
-"""Aplicação interativa (pygame): controlador de janela, viewport e eventos.
+"""
+Visualizador Interativo e Controlador de Janela (viewer.py)
 
-Componentizado em:
-  * `ui.theme`   — cores, dimensões e ciclos de opções
-  * `ui.camera`  — controlador de câmera orbital (`OrbitCamera`)
-  * `ui.widgets` — primitivos de UI imediata, scroll e hitboxes (`UIPanelCanvas`)
-  * `ui.panel`   — renderização do painel lateral e da barra de status
+Gerencia o ciclo principal de eventos e renderização em Pygame, integrando
+alternância em tempo real de backends (`cpu-sw`, `cpu-fast`, `gpu-gl`), quatro
+modos de inspeção visual (cena, volumes 3D + silhueta, buffer de stencil e
+diferença contra ray casting), resolução adaptativa, tela cheia e captura PNG.
 """
 from __future__ import annotations
 

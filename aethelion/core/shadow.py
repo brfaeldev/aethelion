@@ -1,17 +1,11 @@
-"""Construção de volumes de sombra a partir da silhueta (finita e homogênea no infinito).
+"""
+Construtor de Volumes de Sombra e Extrator de Silhuetas (shadow.py)
 
-Segue a formulação de Everitt e Kilgard (2002): para uma malha fechada (2-manifold)
-e uma fonte pontual L = (L_x, L_y, L_z, 1), as arestas de silhueta são aquelas cujas
-duas faces adjacentes discordam quanto a estarem voltadas para a luz. Cada aresta
-de silhueta é extrudada no sentido oposto à luz, formando um quadrilátero; as tampas
-frontal e traseira fecham o volume e são obrigatórias na variante z-fail.
-
-Suporta dois regimes de extrusão:
-1. Extrusão finita por distância L (`extrude_len`), usada para investigar o
-   truncamento de volumes (Hipótese H5) e o comportamento clássico de Carmack;
-2. Extrusão homogênea até o infinito com w = 0:
-       V_inf = <V_x - L_x, V_y - L_y, V_z - L_z, 0>
-   combinada com a matriz P_inf (Everitt & Kilgard, 2002, Seções 3.2 e 4.2).
+Identifica faces voltadas para a luz e arestas de silhueta em malhas fechadas
+(2-manifold), extrudando quadriláteros laterais e tampas frontal/traseira
+tanto em distância finita (Carmack) quanto em coordenadas homogêneas no
+infinito (`w = 0`, Everitt & Kilgard, 2002), além de testar inclusão da
+câmera nos volumes por ray casting Möller-Trumbore.
 """
 from __future__ import annotations
 

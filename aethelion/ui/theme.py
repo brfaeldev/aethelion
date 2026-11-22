@@ -1,4 +1,10 @@
-"""Paleta de cores, constantes de layout e ciclos de parâmetros da interface gráfica."""
+"""
+Tema Visual, Constantes de Layout e Ciclos da UI (theme.py)
+
+Centraliza a paleta de cores RGB, dimensões padrão de janela e painel, listas
+de valores cíclicos para ajuste rápido de parâmetros (resoluções de 128x96 a 4K,
+larguras de bits, modos de precisão e vistas) e o mapa de atalhos de teclado.
+"""
 from __future__ import annotations
 
 from ..core.settings import PRESETS

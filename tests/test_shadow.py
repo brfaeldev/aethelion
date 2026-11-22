@@ -1,4 +1,11 @@
-"""Testa extrusão de volumes de sombra (finita e homogênea w=0), P_inf e métricas."""
+"""
+Testes de Volumes de Sombra, Projeção Infinita e Métricas (test_shadow.py)
+
+Valida o fechamento two-manifold e a orientação externa consistente dos volumes
+de sombra extrudados (via Teorema da Divergência), a extrusão homogênea no
+infinito (`w = 0`) com matriz `P_inf`, a quantização de profundidade por
+fragmento e a concordância (F1 > 0.92) de `z-pass` e `z-fail` contra o ray casting.
+"""
 from __future__ import annotations
 
 import numpy as np

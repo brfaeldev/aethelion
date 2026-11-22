@@ -1,4 +1,11 @@
-"""Renderização do painel lateral de controle (HUD) e da barra de status."""
+"""
+Painel Lateral de Controle (HUD) e Barra de Status (panel.py)
+
+Desenha a interface lateral interativa com seletores clicáveis de backend,
+presets e parâmetros do pipeline (`SVSettings`), botões de ação experimental,
+indicadores de telemetria em tempo real (latência por estágio, memória em KB,
+contadores de stencil e F1 contra ray casting) e a barra de status inferior.
+"""
 from __future__ import annotations
 
 import time

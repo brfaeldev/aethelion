@@ -1,4 +1,11 @@
-"""Camada de abstração de backends (CPU e GPU) e fábrica unificada de renderizadores."""
+"""
+Abstração e Fábrica de Backends de Renderização (backend.py)
+
+Define o contrato estrutural (`RendererProtocol`) comum aos motores gráficos
+e disponibiliza a fábrica unificada (`create_renderer`) capaz de instanciar
+os backends de software (`cpu-sw`, `cpu-fast`) ou acelerado por hardware
+(`gpu-gl` via ModernGL) com fallback automático.
+"""
 from __future__ import annotations
 
 import warnings

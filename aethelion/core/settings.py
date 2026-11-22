@@ -1,4 +1,11 @@
-"""Configurações, estatísticas de telemetria e presets do motor Aethelion."""
+"""
+Configurações do Pipeline, Presets e Telemetria (settings.py)
+
+Define a classe de configuração validada (`SVSettings`), a estrutura de
+métricas por quadro (`SVStats`), a matriz de dithering Bayer 4x4 e os perfis
+pré-configurados (`fast`, `balanced`, `retro-ps1`, `high`) que controlam
+os parâmetros arquiteturais e algoritmos de sombra do motor Aethelion.
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

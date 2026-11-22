@@ -1,4 +1,11 @@
-"""Definição das 8 fases experimentais, hipóteses H1–H5, trajetórias de câmera e esquema CSV."""
+"""
+Roteiro de Fases Experimentais e Hipóteses (phases.py)
+
+Define as 8 fases controladas (A–H), as 5 hipóteses de pesquisa (H1–H5),
+o esquema de colunas de telemetria (`CSV_FIELDS`) e as funções analíticas
+das trajetórias determinísticas de câmera (`orbita`, `travessia`, `grade` e
+`rasante`) utilizadas na bateria experimental.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass

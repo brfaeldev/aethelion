@@ -1,4 +1,11 @@
-"""Testes da abstração de backends, presets, cache de silhuetas e novos parâmetros da CLI."""
+"""
+Testes de Backends, Presets, CLI e Execução Experimental (test_backend_and_cli.py)
+
+Verifica a equivalência pixel a pixel entre `cpu-sw` e `cpu-fast`, a exatidão
+do cache de volumes de sombra, o funcionamento e fallback do backend `gpu-gl`,
+o carregamento de presets e flags da CLI, a validação defensiva de `SVSettings`
+e a execução ponta a ponta do `ExperimentRunner` com geração de gráficos e relatório.
+"""
 import json
 import warnings
 

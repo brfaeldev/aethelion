@@ -1,9 +1,10 @@
-"""Álgebra linear mínima para o pipeline gráfico (coordenadas homogêneas).
+"""
+Utilitários de Álgebra Linear e Transformações 3D (mathutil.py)
 
-Todas as matrizes são 4x4, na convenção M @ v com v = [x, y, z, w].
-Inclui tanto a matriz de perspectiva finita clássica (Blinn, 1993) quanto a
-matriz de projeção com plano distante no infinito P_inf (Everitt & Kilgard, 2002)
-para extrusão robusta de volumes de sombra com w = 0.
+Fornece matrizes homogêneas 4x4 para transformações afins (translação, escala,
+rotações), cálculo de matriz normal 3x3 (inversa-transposta), câmera `look_at`
+e projeções perspectivas tanto com plano distante finito (Blinn, 1993) quanto
+no infinito (`P_inf`, Everitt & Kilgard, 2002) para extrusão de sombras com `w = 0`.
 """
 from __future__ import annotations
 

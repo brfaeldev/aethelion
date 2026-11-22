@@ -1,4 +1,11 @@
-"""Subpacote de avaliação experimental: conformidade, ray casting, fases, varreduras e relatórios."""
+"""
+Subpacote de Avaliação Experimental (evaluation/__init__.py)
+
+Centraliza os módulos de validação científica e instrumentação do Aethelion,
+incluindo a suíte de conformidade OpenGL 1.4, verdade de referência por ray
+casting, definição das 8 fases e hipóteses H1–H5, executor do protocolo,
+varreduras paramétricas, gráficos analíticos e geração do relatório Markdown.
+"""
 from . import conformance, phases, plots, report, runner, sweeps, truth
 from .conformance import TESTS as CONFORMANCE_TESTS, run as run_conformance
 from .phases import CSV_FIELDS, HIPOTESES, PHASES, Phase, camera_for

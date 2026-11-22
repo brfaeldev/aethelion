@@ -1,11 +1,11 @@
-"""Backend GPU (`gpu-gl`) baseado em ModernGL / OpenGL.
+"""
+Backend de Renderização em GPU via OpenGL/ModernGL (gpu_renderer.py)
 
-Implementa o mesmo contrato de `SVRenderer` herdando de `BaseRenderer` e usando FBO offscreen com:
-  1. Passagem de geometria (color_lit, color_amb, world_pos, depth_texture)
-  2. Passagem de volumes de sombra em duas sub-passagens aditivas (`z-pass` / `z-fail`)
-  3. Passagem de composição e pós-processamento (stencil N bits saturado/wrap, color_bits, dither Bayer 4x4)
-
-Requer a dependência opcional `moderngl>=5.8` (`pip install -e .[gpu]`).
+Implementa o pipeline completo de sombras volumétricas em hardware gráfico
+usando três Framebuffer Objects (FBOs) offscreen: passagem de geometria com
+Multiple Render Targets (MRT), acumulação aditiva de contagens de stencil em
+duas sub-passagens (`z-pass` / `z-fail`) e composição final com quantização
+de bits, modo saturado/wrap e dithering ordenado Bayer 4x4.
 """
 from __future__ import annotations
 

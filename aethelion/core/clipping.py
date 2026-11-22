@@ -1,4 +1,11 @@
-"""Recorte homogêneo contra o plano próximo em espaço de clip (Sutherland-Hodgman)."""
+"""
+Recorte Homogêneo no Plano Próximo (clipping.py)
+
+Implementa o algoritmo de Sutherland-Hodgman em espaço de clip 4D para
+recortar polígonos convexos e interpolar atributos contra o plano próximo
+do frustum (`z_clip + w_clip >= 0`) e o semiespaço `w >= eps`, evitando
+divisões por zero e inversões projetivas atrás da câmera.
+"""
 from __future__ import annotations
 
 import numpy as np

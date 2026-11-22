@@ -1,16 +1,11 @@
-"""Rasterizador por software com stencil e volumes de sombra (`cpu-sw` e `cpu-fast`).
+"""
+Renderizador por Software de Sombras Volumétricas (sv_renderer.py)
 
-Fluxo por quadro:
-
-    1. Passagem de geometria  -> profundidade (quantizada por fragmento),
-                                 cor iluminada, cor ambiente,
-                                 posição de mundo (G-buffer opcional)
-    2. Construção de volumes  -> silhueta + extrusão (finita ou homogênea w=0)
-                                 + tampas (apenas em z-fail)
-    3. Passagem de stencil    -> z-pass ou z-fail (com depth clamping opcional),
-                                 sem escrita de cor ou de profundidade
-    4. Composição             -> pixel sombreado recebe apenas o termo ambiente
-    5. Resolve                -> quantização de cor e dithering Bayer pré-calculado
+Implementa os backends de CPU (`SVRenderer` em NumPy puro e `FastCPURenderer`
+acelerado via Numba), executando o pipeline completo por quadro: passagem de
+geometria com interpolação baricêntrica corrigida por perspectiva, construção
+de volumes de sombra, passagem de stencil (`z-pass` ou `z-fail` com depth
+clamping), composição de iluminação e quantização final com dithering Bayer.
 """
 from __future__ import annotations
 

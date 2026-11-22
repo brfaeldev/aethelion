@@ -1,4 +1,11 @@
-"""Geração do relatório consolidado (`RELATORIO.md`) e orquestração com `plots`."""
+"""
+Gerador de Relatório Experimental Consolidado (report.py)
+
+Processa os resultados de `conformidade.csv`, `resumo.csv` e das varreduras
+paramétricas para avaliar automaticamente o veredicto de cada hipótese
+(H1–H5), compilar tabelas de desempenho, memória e concordância e emitir
+o documento final `RELATORIO.md` acompanhado das figuras analíticas.
+"""
 from __future__ import annotations
 
 import os

@@ -1,4 +1,10 @@
-"""Testa os 24 casos da suíte de conformidade (OpenGL 1.4 stencil, top-left e recorte)."""
+"""
+Testes Automatizados da Suíte de Conformidade OpenGL 1.4 (test_conformance.py)
+
+Executa via `pytest` os 24 casos de verificação da unidade de stencil, da
+regra de preenchimento exclusiva top-left e do recorte homogêneo no plano
+próximo, assegurando 100% de aprovação e a correta exportação de `conformidade.csv`.
+"""
 from __future__ import annotations
 
 from aethelion.evaluation.conformance import TESTS, run

@@ -1,4 +1,11 @@
-"""Shaders GLSL para o backend OpenGL/ModernGL (`gpu-gl`)."""
+"""
+Programas de Shader GLSL para o Backend OpenGL (shaders.py)
+
+Contém o código-fonte GLSL 330 dos shaders de vértice e fragmento utilizados
+pelo backend `gpu-gl`, reproduzindo em hardware a quantização de precisão
+(`float16`, `fixed16_16`, `fixed12_4`), `vertex_snap`, sombreamento
+Gouraud/Flat/Unlit, depth clamping, stencil de N bits e dithering Bayer 4x4.
+"""
 from __future__ import annotations
 
 GEOM_VERT = """

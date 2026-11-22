@@ -1,4 +1,11 @@
-"""Controlador de câmera orbital livre para navegação por mouse e teclado."""
+"""
+Controlador de Câmera Orbital Interativa (camera.py)
+
+Gerencia a posição da câmera em coordenadas esféricas (`yaw`, `pitch`, `dist`)
+ao redor de um ponto-alvo 3D (`target`), processando arraste de mouse, roda
+de zoom e teclas direcionais para navegação livre na cena quando o roteiro
+experimental automático não está ativo.
+"""
 from __future__ import annotations
 
 import numpy as np

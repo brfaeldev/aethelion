@@ -1,4 +1,11 @@
-"""Estruturas de malha poligonal fechada (two-manifold) e análise topológica."""
+"""
+Estruturas de Malha Fechada e Topologia Two-Manifold (mesh.py)
+
+Define as estruturas de dados geométricas (`Solid` e `Prop`), a soldagem
+espacial de vértices coincidentes (`weld`), o cálculo de normais suaves
+ponderadas por área e o mapeamento de meias-arestas opostas (`topology`)
+necessário para extração eficiente de silhuetas sem costuras abertas.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

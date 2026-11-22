@@ -1,14 +1,11 @@
-"""Aethelion — estudo de sombras volumétricas por stencil em rasterizador próprio.
+"""
+Pacote Principal Aethelion (aethelion/__init__.py)
 
-Eixo 7: arquitetura de consoles antigos. O objeto de estudo é o efeito dos
-recursos e limites do pipeline (stencil, profundidade, precisão, recorte) sobre
-a robustez, o consumo de memória e o custo de um algoritmo clássico de sombras.
-
-Subpacotes:
-  * aethelion.core        — motor gráfico, estágios do pipeline e backends CPU/GPU
-  * aethelion.scenes      — primitivas 3D e cena procedural two-manifold da cripta
-  * aethelion.evaluation  — conformidade, ray casting, fases, varreduras e relatórios
-  * aethelion.ui          — aplicação interativa em Pygame componentizada
+Centraliza e reexporta a API pública do estudo experimental de sombras
+volumétricas por stencil em rasterizador próprio (Eixo 7: arquitetura de
+consoles antigos). Integra o motor gráfico (`core`), geradores de cena
+(`scenes`), suíte de avaliação experimental (`evaluation`), interface
+interativa em Pygame (`ui`) e interface de linha de comando (`cli`).
 """
 from . import cli, core, evaluation, scenes, ui
 from .core.backend import (

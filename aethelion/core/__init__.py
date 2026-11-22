@@ -1,4 +1,11 @@
-"""Núcleo do motor gráfico e estágios do pipeline de sombras volumétricas."""
+"""
+Núcleo do Motor Gráfico (core/__init__.py)
+
+Agrupa e exporta as estruturas e funções fundamentais do pipeline de
+renderização 3D e geração de sombras volumétricas, incluindo álgebra linear
+homogênea, topologia two-manifold, recorte, rasterização, unidade de stencil,
+texturas procedurais e backends de execução em CPU e GPU.
+"""
 from .backend import (
     RendererProtocol,
     available_backends,

@@ -1,4 +1,11 @@
-"""Varreduras paramétricas de resolução, complexidade geométrica e extrusão P_inf."""
+"""
+Varreduras Paramétricas de Desempenho e Robustez (sweeps.py)
+
+Avalia sistematicamente o comportamento do pipeline sob variação de três
+fatores independentes — resolução interna do framebuffer, complexidade
+geométrica da cena (`detail`) e regime de extrusão (finita de Carmack vs.
+infinita homogênea `P_inf, w = 0` de Everitt & Kilgard) — gerando CSVs dedicados.
+"""
 from __future__ import annotations
 
 import csv

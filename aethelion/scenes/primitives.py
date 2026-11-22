@@ -1,4 +1,11 @@
-"""Geradores de primitivas geométricas 3D fechadas (two-manifold)."""
+"""
+Geradores de Primitivas Geométricas 3D (primitives.py)
+
+Sintetiza malhas poligonais fechadas (two-manifold) com orientação consistente
+de normais externas — paralelepípedo (`box`), cilindro (`cylinder`), esfera UV
+(`uv_sphere`) e toro (`torus_solid`) — prontas para extração de silhuetas e
+extrusão de volumes de sombra sem arestas de borda abertas.
+"""
 from __future__ import annotations
 
 import numpy as np

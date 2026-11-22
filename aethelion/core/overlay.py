@@ -1,4 +1,11 @@
-"""Componente de inspeção visual 3D dos volumes de sombra e arestas de silhueta."""
+"""
+Sobreposição Visual 3D de Volumes de Sombra e Silhuetas (overlay.py)
+
+Renderiza uma vista didática semitransparente sobre o framebuffer da cena,
+destacando faces frontais (âmbar) e traseiras (azul-ciano) dos volumes de
+sombra extrudados, arestas de silhueta em ciano brilhante e a posição da
+fonte de luz pontual com teste de profundidade contra o Z-buffer.
+"""
 from __future__ import annotations
 
 import numpy as np

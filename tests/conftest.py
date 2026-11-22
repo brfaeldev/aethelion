@@ -1,4 +1,10 @@
-"""Fixtures compartilhadas para os testes automatizados do Aethelion."""
+"""
+Configuração e Fixtures Compartilhadas do Pytest (conftest.py)
+
+Disponibiliza fixtures reutilizáveis para os módulos de teste, incluindo
+uma configuração leve de baixa resolução (`small_settings`) e um sólido
+cúbico unitário two-manifold (`unit_box`).
+"""
 from __future__ import annotations
 
 import pytest

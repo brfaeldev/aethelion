@@ -1,15 +1,10 @@
-"""Varredura de triângulos por funções de aresta, com regra de preenchimento
-exclusiva (top-left generalizada).
+"""
+Rasterizador de Triângulos com Regra Top-Left (raster.py)
 
-A regra de desempate é antissimétrica sobre a aresta orientada: para uma aresta
-compartilhada entre dois triângulos adjacentes, a direção orientada em relação
-ao interior de cada triângulo é oposta, logo o predicado vale para exatamente
-um deles. Isso garante, por construção, que um pixel sobre a aresta seja
-coberto UMA vez — sem furos e sem dupla cobertura.
-
-A propriedade é essencial para shadow volumes: dupla cobertura de uma aresta
-incrementa o contador de stencil duas vezes e produz sombra espúria; furos
-sobre a aresta deixam escapar contagens de entrada/saída do volume.
+Converte triângulos projetados em fragmentos 2D e coordenadas baricêntricas
+utilizando funções de aresta com regra de desempate antissimétrica (top-left).
+Garante cobertura única em arestas compartilhadas (sem furos nem dupla
+contagem no stencil), com suporte opcional a compilação JIT via Numba.
 """
 from __future__ import annotations
 

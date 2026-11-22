@@ -1,18 +1,11 @@
-"""Unidade de stencil em software.
+"""
+Unidade de Stencil em Software (stencil.py)
 
-Implementa o subconjunto do estágio de stencil descrito na especificação
-OpenGL 1.4 (Segal & Akeley, 2002, Seção 4.1.5): oito funções de comparação,
-oito operações, máscara de comparação, máscara de escrita e largura de buffer
-configurável.
-
-Dois pontos são tratados como fatores experimentais:
-
-* a LARGURA do buffer (1..8 bits) — contadores estreitos saturam quando muitos
-  volumes de sombra se sobrepõem no mesmo pixel;
-* a escolha entre operações SATURADAS (INCR/DECR) e com transbordo CIRCULAR
-  (INCR_WRAP/DECR_WRAP). As variantes de wrap (originalmente EXT_stencil_wrap)
-  foram promovidas ao núcleo em OpenGL 1.4 e são a condição de robustez que
-  Everitt e Kilgard (2002) demonstram para shadow volumes com alta sobreposição.
+Emula o estágio de teste e atualização do buffer de stencil conforme a
+especificação OpenGL 1.4 (Seção 4.1.5), suportando 8 funções de comparação,
+8 operações (incluindo saturação `INCR`/`DECR` vs. transbordo circular
+`INCR_WRAP`/`DECR_WRAP`), máscaras de bits, largura configurável (1 a 8 bits)
+e instrumentação de eventos de saturação e wrap.
 """
 from __future__ import annotations
 

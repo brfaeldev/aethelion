@@ -1,4 +1,11 @@
-"""Testa topologia two-manifold e unicidade de instâncias em scenes.crypt."""
+"""
+Testes de Integridade Topológica Two-Manifold da Cena (test_topology.py)
+
+Garante que todas as primitivas geométricas e objetos (`Prop`) da cripta
+sejam variedades fechadas sem arestas abertas, possuam volume assinalado
+positivo (normais apontando para fora), nomes únicos e que a trajetória da
+luz pontual nunca colida com os oclusores.
+"""
 from __future__ import annotations
 
 import numpy as np
