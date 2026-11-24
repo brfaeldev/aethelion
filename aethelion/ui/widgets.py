@@ -103,8 +103,8 @@ class UIPanelCanvas:
         cb: Callable,
         color=FG,
     ) -> int:
-        h = self.font.get_height() + 4
-        self.screen.blit(self.font.render(f"{label:<13}:", True, FG), (x, y + 2))
+        h = self.font.get_height() + 3
+        self.screen.blit(self.font.render(f"{label:<13}:", True, FG), (x, y + 1))
         bw = max(120, w - 125)
         rect = self.pg.Rect(x + 122, y, bw, h)
         self.button(rect, str(val_str), cb, fg=color, font=self.font_s)
@@ -122,8 +122,8 @@ class UIPanelCanvas:
         color=FG,
     ) -> int:
         pg, screen, font, font_s = self.pg, self.screen, self.font, self.font_s
-        h = font.get_height() + 4
-        screen.blit(font.render(f"{label:<13}:", True, FG), (x, y + 2))
+        h = font.get_height() + 3
+        screen.blit(font.render(f"{label:<13}:", True, FG), (x, y + 1))
         bw_step = 24
         val_w = max(66, w - 125 - bw_step * 2 - 8)
         vx = x + 122
@@ -131,7 +131,7 @@ class UIPanelCanvas:
         lbl = font_s.render(str(val_str), True, color)
         screen.blit(
             lbl,
-            (vx + bw_step + 4 + max(0, (val_w - lbl.get_width()) // 2), y + 3),
+            (vx + bw_step + 4 + max(0, (val_w - lbl.get_width()) // 2), y + 2),
         )
         self.button(
             pg.Rect(vx + bw_step + 4 + val_w + 4, y, bw_step, h), "+", cb_plus

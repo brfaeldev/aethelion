@@ -17,6 +17,8 @@ from .theme import (
     BITS_CYCLE,
     DEPTH_CYCLE,
     FG,
+    FOOTER_COMMANDS_ROW1,
+    FOOTER_COMMANDS_ROW2,
     HELP,
     OK,
     PANEL_BG,
@@ -262,9 +264,44 @@ def render_control_panel(viewer, canvas: UIPanelCanvas, view_w: int, view_h: int
     viewer.screen.set_clip(old_clip)
 
 
+def _render_command_row(
+    viewer,
+    x: int,
+    y: int,
+    max_w: int,
+    items: list[tuple[str, str]],
+) -> None:
+    """Desenha uma linha de atalhos com chaves destacadas no rodapé."""
+    f = viewer.font_s
+    sep_str = " | "
+    colon_str = ": "
+    # Se a janela for estreita, usa espaçamento compacto para não truncar itens
+    test_str = sep_str.join(f"{k}{colon_str}{d}" for k, d in items)
+    if f.size(test_str)[0] > max_w:
+        sep_str = " | "
+        colon_str = ":"
+        test_str = sep_str.join(f"{k}{colon_str}{d}" for k, d in items)
+        if f.size(test_str)[0] > max_w:
+            sep_str = " · "
+
+    sep_surf = f.render(sep_str, True, (95, 100, 122))
+    sep_w = sep_surf.get_width()
+    cx = x
+    for idx, (key, desc) in enumerate(items):
+        if idx > 0:
+            viewer.screen.blit(sep_surf, (cx, y))
+            cx += sep_w
+        k_surf = f.render(key, True, ACC)
+        d_surf = f.render(f"{colon_str}{desc}", True, (195, 198, 212))
+        viewer.screen.blit(k_surf, (cx, y))
+        cx += k_surf.get_width()
+        viewer.screen.blit(d_surf, (cx, y))
+        cx += d_surf.get_width()
+
+
 def render_status_bar(viewer, view_w: int, view_h: int, panel_w: int) -> None:
-    """Desenha a barra de estado inferior da janela."""
-    pg = viewer.pg
+    """Desenha a barra de estado inferior da janela com todos os comandos disponíveis."""
+    pg, s = viewer.pg, viewer.r.settings
     total_w = view_w + panel_w
     pg.draw.rect(viewer.screen, (14, 14, 18), (0, view_h, total_w, STATUS_H))
     pg.draw.line(viewer.screen, PANEL_DIV, (0, view_h), (total_w, view_h), 1)
@@ -290,13 +327,21 @@ def render_status_bar(viewer, view_w: int, view_h: int, panel_w: int) -> None:
         color = WARN
     else:
         bname = getattr(viewer.r, "backend_name", "cpu-sw")
-        modo_tela = "TELA CHEIA" if viewer.fullscreen else "F11: Tela Cheia"
+        wrap_txt = "INCR_WRAP" if s.stencil_wrap else "SATURADO"
+        luz_txt = "PAUSADA" if viewer.light_paused else "animada"
+        modo_tela = "TELA CHEIA" if viewer.fullscreen else "Janela"
         txt = (
-            f"PRONTO [{bname}] — TAB: Backend | M: Pausar Luz | Arraste: Câmera | "
-            f"ESPAÇO: Experimento | {modo_tela}"
+            f"PRONTO [{bname}] — Vista: {VIEW_NAMES[viewer.view_mode]} | "
+            f"Algoritmo: {s.algorithm} | Stencil: {s.stencil_bits}b ({wrap_txt}) | "
+            f"Res: {s.width}x{s.height} | Luz: {luz_txt} | {modo_tela}"
         )
         color = FG
-    viewer.screen.blit(
-        viewer.font.render(txt, True, color),
-        (12, view_h + (STATUS_H - viewer.font.get_height()) // 2),
-    )
+
+    y_status = view_h + 4
+    viewer.screen.blit(viewer.font.render(txt, True, color), (12, y_status))
+
+    y_row1 = y_status + viewer.font.get_height() + 3
+    y_row2 = y_row1 + viewer.font_s.get_height() + 2
+    avail_w = total_w - 24
+    _render_command_row(viewer, 12, y_row1, avail_w, FOOTER_COMMANDS_ROW1)
+    _render_command_row(viewer, 12, y_row2, avail_w, FOOTER_COMMANDS_ROW2)

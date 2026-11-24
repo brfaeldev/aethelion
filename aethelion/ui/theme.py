@@ -12,7 +12,7 @@ from ..core.settings import PRESETS
 DEFAULT_WIN_W = 1280
 DEFAULT_WIN_H = 780
 MIN_PANEL_W = 380
-STATUS_H = 34
+STATUS_H = 58
 
 BG = (22, 22, 28)
 PANEL_BG = (32, 32, 42)
@@ -63,4 +63,31 @@ HELP = [
     ("V / G / C", "vista / ray cast / conformidade"),
     ("S / ESC", "captura PNG / sair"),
     ("mouse/setas", "arrastar=orbitar, roda=zoom"),
+]
+
+FOOTER_COMMANDS_ROW1 = [
+    ("TAB", "Backend"),
+    ("ESPAÇO", "Experimento"),
+    ("M", "Pausar Luz"),
+    ("V", "Vista"),
+    ("G", "RayCast"),
+    ("C", "Conformidade"),
+    ("S", "Captura PNG"),
+    ("F11/F", "Tela Cheia"),
+    ("ESC", "Sair"),
+    ("Arraste/Setas", "Câmera"),
+    ("Scroll", "Zoom/Painel"),
+]
+
+FOOTER_COMMANDS_ROW2 = [
+    ("1", "Z-Pass"),
+    ("2", "Z-Fail"),
+    ("0", "Sem Sombra"),
+    ("W", "Stencil Wrap"),
+    ("B", "Stencil Bits"),
+    ("D", "Z-Buffer"),
+    ("P", "Precisão"),
+    ("E", "Extrusão L"),
+    ("I", "Extrusão Inf (P_inf)"),
+    ("R / [ ] / - +", "Resolução"),
 ]
