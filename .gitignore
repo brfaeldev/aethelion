@@ -22,7 +22,8 @@ dist/
 
 # Experiment, conformance & local documentation outputs
 results/
-docs/
+docs/*
+!docs/Computação_Gráfica*.pdf
 APRESENTACAO.md
 
 # IDE / Editor settings
