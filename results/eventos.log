@@ -1,0 +1,12 @@
+[2026-11-17 22:56:33] [t=   0.00s] INICIO backend=cpu-sw resolucao=256x192 duracao_prevista=96s relogio=deterministico(dt=0.5s)
+[2026-11-17 22:56:33] [t=   0.00s] FASE A (H2) 'z-pass, câmera externa' config={'algorithm': 'zpass', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=orbita
+[2026-11-17 22:56:39] [t=  12.00s] FASE B (H2) 'z-fail, câmera externa' config={'algorithm': 'zfail', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=orbita
+[2026-11-17 22:56:47] [t=  24.00s] FASE C (H1) 'z-pass, câmera interna' config={'algorithm': 'zpass', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=travessia
+[2026-11-17 22:56:51] [t=  36.00s] FASE D (H1) 'z-fail, câmera interna' config={'algorithm': 'zfail', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=travessia
+[2026-11-17 22:56:56] [t=  48.00s] FASE E (H3) 'stencil 3 bits sem wrap' config={'algorithm': 'zfail', 'stencil_bits': 3, 'stencil_wrap': False, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=grade
+[2026-11-17 22:56:59] [t=  60.00s] FASE F (H3) 'stencil 3 bits com wrap' config={'algorithm': 'zfail', 'stencil_bits': 3, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=grade
+[2026-11-17 22:57:03] [t=  72.00s] FASE G (H4) 'profundidade de 12 bits' config={'algorithm': 'zfail', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 12, 'extrude_len': 40.0, 'infinite_extrude': False} camera=rasante
+[2026-11-17 22:57:09] [t=  84.00s] FASE H (H5) 'extrusão curta' config={'algorithm': 'zfail', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 3.5, 'infinite_extrude': False} camera=orbita
+[2026-11-17 22:57:16] [t=  96.00s] FIM quadros=192 linhas=192
+[2026-11-17 22:57:16] [t=  96.00s] -> results\experimento.csv
+[2026-11-17 22:57:16] [t=  96.00s] -> results\resumo.csv

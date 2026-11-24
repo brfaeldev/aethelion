@@ -1,0 +1,7 @@
+[2026-11-24 19:15:50] [t=   0.00s] INICIO backend=gpu-gl resolucao=320x240 duracao_prevista=96s relogio=parede
+[2026-11-24 19:15:50] [t=   0.00s] FASE A (H2) 'z-pass, câmera externa' config={'algorithm': 'zpass', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=orbita
+[2026-11-24 19:16:04] [t=  12.09s] FASE B (H2) 'z-fail, câmera externa' config={'algorithm': 'zfail', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=orbita
+[2026-11-24 19:16:18] [t=  24.16s] FASE C (H1) 'z-pass, câmera interna' config={'algorithm': 'zpass', 'stencil_bits': 8, 'stencil_wrap': True, 'depth_bits': 0, 'extrude_len': 40.0, 'infinite_extrude': False} camera=travessia
+[2026-11-24 19:16:25] [t=  30.79s] FIM quadros=293 linhas=293
+[2026-11-24 19:16:25] [t=  30.80s] -> results\experimento_parcial.csv
+[2026-11-24 19:16:25] [t=  30.80s] -> results\resumo_parcial.csv

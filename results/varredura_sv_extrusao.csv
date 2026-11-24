@@ -1,0 +1,4 @@
+variante,largura,altura,detail,algoritmo,extrude_len,tris_scene,tris_volume,frag_stencil,mem_buffers_kb,mem_geometry_kb,mem_total_kb,mediana_ms_total,iqr_ms_total,mediana_fps,media_precision,media_recall,media_f1,dp_f1
+Finita curta (L=3.5),256,192,1.0,zfail,3.5,1540,2312,226938,432.0,189.56,621.56,162.106,18.287,6.169,0.99807,0.54975,0.70678,0.06132
+Finita padrão (L=40),256,192,1.0,zfail,40.0,1540,2312,387762,432.0,189.56,621.56,174.796,18.058,5.721,0.99896,0.99992,0.99944,0.0002
+Infinita P_inf (w=0),256,192,1.0,zfail,inf(w=0),1540,2312,426512,432.0,216.66,648.66,183.013,18.453,5.466,0.99898,0.99985,0.99942,0.00021

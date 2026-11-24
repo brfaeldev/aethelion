@@ -20,8 +20,7 @@ dist/
 *.egg-info/
 .eggs/
 
-# Experiment, conformance & local documentation outputs
-results/
+# Local documentation outputs
 docs/*
 !docs/Computação_Gráfica*.pdf
 APRESENTACAO.md

@@ -1,0 +1,5 @@
+variante,largura,altura,detail,algoritmo,extrude_len,tris_scene,tris_volume,frag_stencil,mem_buffers_kb,mem_geometry_kb,mem_total_kb,mediana_ms_total,iqr_ms_total,mediana_fps,media_precision,media_recall,media_f1,dp_f1
+detail=0.5,256,192,0.5,zfail,40.0,876,1472,385634,432.0,113.34,545.34,130.567,39.419,7.665,0.99923,1.0,0.99962,0.00022
+detail=1.0,256,192,1.0,zfail,40.0,1540,2312,387762,432.0,189.56,621.56,179.865,23.664,5.561,0.99896,0.99992,0.99944,0.0002
+detail=1.5,256,192,1.5,zfail,40.0,2424,3368,388818,432.0,288.84,720.84,229.459,21.371,4.362,0.99917,1.0,0.99958,0.00017
+detail=2.0,256,192,2.0,zfail,40.0,3680,4768,388738,432.0,426.38,858.38,304.739,31.54,3.286,0.99933,0.99997,0.99965,9e-05
