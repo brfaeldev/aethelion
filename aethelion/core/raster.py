@@ -2,9 +2,10 @@
 Rasterizador de Triângulos com Regra Top-Left (raster.py)
 
 Converte triângulos projetados em fragmentos 2D e coordenadas baricêntricas
-utilizando funções de aresta com regra de desempate antissimétrica (top-left).
-Garante cobertura única em arestas compartilhadas (sem furos nem dupla
-contagem no stencil), com suporte opcional a compilação JIT via Numba.
+utilizando funções de aresta (Pineda, 1988; Akenine-Möller et al., 2018) com
+regra de desempate antissimétrica (top-left, OpenGL 1.4 Seção 3.5). Garante
+cobertura única em arestas compartilhadas (sem furos nem dupla contagem no
+stencil), com suporte opcional a compilação JIT via Numba.
 """
 from __future__ import annotations
 

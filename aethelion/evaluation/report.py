@@ -69,7 +69,7 @@ def write_report(outdir: str) -> str:
     a("")
     a("Como a arquitetura do buffer (largura do stencil, disponibilidade de "
       "operações de transbordo circular `INCR_WRAP`/`DECR_WRAP`, largura do "
-      "buffer de profundidade) e a variante do algoritmo (`z-pass` versus "
+      "buffer de profundidade e precisão numérica) e a variante do algoritmo (`z-pass` versus "
       "`z-fail` com extrusão finita ou homogênea no infinito $P_{\\text{inf}}$) "
       "afetam a **robustez**, a **precisão geométrica**, o **consumo de memória** "
       "e o **custo computacional** da geração de sombras volumétricas?")
@@ -194,8 +194,10 @@ def write_report(outdir: str) -> str:
       "para evitar singularidade de $w_{\\text{clip}} = 0$ na tampa traseira.")
     a("3. A verdade de referência por ray casting assume fonte pontual e oclusão binária; "
       "seu tempo de processamento é descontado do relógio experimental das fases.")
-    a("4. Referências fundamentais: Everitt & Kilgard (2002); Segal & Akeley (OpenGL 1.4, 2002); "
-      "Li, Magnor & Seidel (WSCG 2003).")
+    a("4. Referências fundamentais: Crow (1977); Heidmann (1991); Everitt & Kilgard (2002); "
+      "Segal & Akeley (OpenGL 1.4, 2002); Li, Magnor & Seidel (WSCG 2003); "
+      "Akenine-Möller, Haines & Hoffman (2018); Blinn (1993); Sutherland & Hodgman (1974); "
+      "Pineda (1988); Möller & Trumbore (1997).")
     a("")
     path = os.path.join(outdir, "RELATORIO.md")
     with open(path, "w", encoding="utf-8") as f:

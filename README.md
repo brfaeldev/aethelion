@@ -25,7 +25,7 @@ consolidados da bateria experimental estão em [`results/RELATORIO.md`](results/
 
 O projeto investiga empiricamente o impacto de restrições arquiteturais típicas de
 pipelines gráficos clássicos e consoles de 5ª/6ª geração sobre o algoritmo de
-*stenciled shadow volumes* (Heidmann, 1991; Carmack, 2000; Everitt & Kilgard, 2002)
+*stenciled shadow volumes* (Crow, 1977; Heidmann, 1991; Carmack, 2000; Everitt & Kilgard, 2002)
 em uma cena procedural fechada (*two-manifold*) de pior caso (cripta com colunas,
 arcos, estátua e grade de alta sobreposição):
 
@@ -103,6 +103,8 @@ python main.py --experiment --deterministic     # passo temporal fixo por quadro
 python main.py --conformance                    # executa apenas a suíte de conformidade OpenGL 1.4
 python main.py --sv-sweeps                      # varreduras de resolução, complexidade (detail) e P_inf
 python main.py --report                         # regenera gráficos PNG e RELATORIO.md a partir dos CSVs
+python varredura_precisao.py                    # gera a Tabela VI do artigo (varredura_sv_precisao.csv)
+python gerar_fig_comparacao.py                  # gera a Figura 3 do artigo (fig_comparacao_fases.png)
 
 # Testes automatizados (unitários, topologia 2-manifold, conformidade, CLI e integração)
 pytest
@@ -165,6 +167,8 @@ O visualizador oferece **4 modos de vista** (tecla `V`):
 | `varredura_sv_resolucao.csv` | Varredura paramétrica de resolução (`160x120` a `400x300`) |
 | `varredura_sv_complexidade.csv` | Varredura de complexidade geométrica da cripta (`detail` de `0.5` a `2.0`) |
 | `varredura_sv_extrusao.csv` | Comparação entre extrusão finita curta ($L=3{,}5$), longa ($L=40$) e infinita ($P_{\text{inf}}, w=0$) |
+| `varredura_sv_precisao.csv` | Varredura de precisão numérica (`float32`, `float16`, `fixed16_16`, `fixed12_4` e `snap 1 px` — Tabela VI) |
+| `fig_comparacao_fases.png` | Painel comparativo 2×5 (cena e diferença contra ray casting nas fases C, D, E, F e H — Figura 3) |
 | `eventos.log` | Linha do tempo auditável (início, transições de fase, *overrides* manuais e encerramento) |
 | `fase_<A..H>_<H1..H5>.png` | Captura representativa no instante médio ($u=0{,}5$) de cada fase experimental |
 | `grafico_*.png` | 8 gráficos analíticos gerados via Matplotlib (custo, concordância, carga, stencil, memória e varreduras) |
@@ -177,10 +181,12 @@ O visualizador oferece **4 modos de vista** (tecla `V`):
 ```text
 aethelion/
 ├── main.py                          # Atalho de entrada na raiz (`python main.py`)
+├── varredura_precisao.py            # Script auxiliar da Tabela VI (varredura de precisão numérica)
+├── gerar_fig_comparacao.py          # Script auxiliar da Figura 3 (painel cena vs. ray casting)
 ├── pyproject.toml                   # Metadados PEP 621, dependências opcionais, pytest e ruff
 ├── requirements.txt                 # Instalação editável (`-e .`)
-├── METODOLOGIA.md                   # Modelagem matemática e desenho experimental detalhado
-├── docs/                            # Artigo científico IEEE em LaTeX e artigos de referência (PDF)
+├── METODOLOGIA.md                   # Modelagem matemática, desenho experimental e referências [1]–[11]
+├── docs/                            # Artigo final IEEE (`Computação_Gráfica .pdf`) e referências (`0301002v1.pdf`, `D19.pdf`)
 ├── results/                         # CSVs, logs, capturas de fases, gráficos e RELATORIO.md
 ├── tests/                           # Suíte de testes automatizados (pytest)
 │   ├── conftest.py                  # Fixtures compartilhadas (configuração leve e cubo 2-manifold)

@@ -23,6 +23,7 @@ dist/
 # Experiment, conformance & local documentation outputs
 results/
 docs/
+APRESENTACAO.md
 
 # IDE / Editor settings
 .vscode/

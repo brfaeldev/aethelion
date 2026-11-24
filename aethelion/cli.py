@@ -21,19 +21,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     m = p.add_argument_group("modo")
-    m.add_argument("--experiment", action="store_true",
+    m.add_argument("--experiment", "-experiment", action="store_true",
                    help="executa o roteiro de fases sem abrir janela")
-    m.add_argument("--conformance", action="store_true",
+    m.add_argument("--conformance", "-conformance", action="store_true",
                    help="executa apenas a suíte de conformidade")
-    m.add_argument("--sv-sweeps", action="store_true",
+    m.add_argument("--sv-sweeps", "-sv-sweeps", action="store_true",
                    help="executa varreduras de resolução, complexidade e extrusão P_inf")
-    m.add_argument("--report", action="store_true",
+    m.add_argument("--report", "-report", action="store_true",
                    help="gera gráficos e RELATORIO.md a partir dos CSVs")
     m.add_argument("-o", "--outdir", default="results",
                    help="diretório de saída dos artefatos (padrão: results)")
     m.add_argument("--measure-every", type=float, default=2.5,
                    help="intervalo (s) entre medições contra a referência (padrão: 2.5)")
-    m.add_argument("--deterministic", action="store_true",
+    m.add_argument("--deterministic", "-deterministic", action="store_true",
                    help="usa passo temporal fixo por quadro em vez de relógio de parede")
     m.add_argument("--fixed-dt", type=float, default=0.5,
                    help="passo temporal fixo (s) quando --deterministic está ativo (padrão: 0.5)")

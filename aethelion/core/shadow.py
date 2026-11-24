@@ -2,10 +2,10 @@
 Construtor de Volumes de Sombra e Extrator de Silhuetas (shadow.py)
 
 Identifica faces voltadas para a luz e arestas de silhueta em malhas fechadas
-(2-manifold), extrudando quadriláteros laterais e tampas frontal/traseira
-tanto em distância finita (Carmack) quanto em coordenadas homogêneas no
-infinito (`w = 0`, Everitt & Kilgard, 2002), além de testar inclusão da
-câmera nos volumes por ray casting Möller-Trumbore.
+(2-manifold, Crow, 1977; Heidmann, 1991), extrudando quadriláteros laterais e
+tampas frontal/traseira tanto em distância finita (Carmack) quanto em
+coordenadas homogêneas no infinito (`w = 0`, Everitt & Kilgard, 2002), além de
+testar inclusão da câmera nos volumes por ray casting (Möller & Trumbore, 1997).
 """
 from __future__ import annotations
 
